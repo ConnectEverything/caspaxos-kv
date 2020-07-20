@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     network::{Net, ResponseHandle},
+    versioned_storage::VersionedStorage,
     Client, Envelope, Message, Request, Response, Server,
 };
 
@@ -74,7 +75,9 @@ pub fn simulate<T>(
         for _ in 0..n_servers {
             let mut server = Server {
                 net: nets.pop().unwrap(),
-                db: HashMap::default(),
+                db: VersionedStorage {
+                    db: sled::Config::new().temporary(true).open().unwrap(),
+                },
             };
             server_addresses.push(server.net.address);
             let server_task = Task::spawn(async move {

@@ -209,7 +209,7 @@ impl Client {
 #[derive(Debug)]
 pub struct Server {
     pub net: Net,
-    pub db: HashMap<Vec<u8>, VersionedValue>,
+    pub db: versioned_storage::VersionedStorage,
 }
 
 impl Server {
@@ -220,20 +220,20 @@ impl Server {
             let response = match request {
                 Request::Ping => Response::Pong,
                 Request::Prepare { key, ballot } => {
-                    let current_value = self.db.get(&key);
+                    let current_value: Option<VersionedValue> =
+                        self.db.get(&key);
                     let success =
-                        current_value.map(|cv| cv.ballot).unwrap_or(0) < ballot;
+                        current_value.as_ref().map(|cv| cv.ballot).unwrap_or(0)
+                            < ballot;
                     Response::Promise {
                         success,
-                        current_value: current_value
-                            .cloned()
-                            .unwrap_or_default(),
+                        current_value: current_value.unwrap_or_default(),
                     }
                 }
                 Request::Accept { key, value } => {
                     let current_value = self.db.get(&key);
                     let success =
-                        current_value.map(|cv| cv.ballot).unwrap_or(0)
+                        current_value.as_ref().map(|cv| cv.ballot).unwrap_or(0)
                             < value.ballot;
                     if success {
                         self.db.insert(key, value);
