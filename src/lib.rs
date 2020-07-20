@@ -1,6 +1,7 @@
 mod network;
 mod paxos;
 mod simulator;
+mod versioned_storage;
 
 pub use {
     network::Net,
