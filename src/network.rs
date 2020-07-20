@@ -204,10 +204,12 @@ impl Net {
             NetInner::Simulator(s) => {
                 for to in servers {
                     let mut simulator = s.lock().await;
+                    /*
                     println!(
                         "sending request {:?} to server {:?}",
                         request, to
                     );
+                    */
                     let uuid = Uuid::new_v4();
                     let response_handle = simulator.request(
                         self.address,
