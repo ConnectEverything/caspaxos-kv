@@ -17,8 +17,9 @@ use smol::Timer;
 use uuid::Uuid;
 
 use crate::{
+    nats_net::NatsNet,
     simulator::{Simulator, SimulatorRunner},
-    Request, Response,
+    Envelope, Message, Request, Response,
 };
 
 #[derive(Debug)]
@@ -32,11 +33,8 @@ pub struct Net {
 #[derive(Debug)]
 pub enum NetInner {
     Simulator(Arc<Mutex<Simulator>>),
-    Udp(UdpNet),
+    Nats(NatsNet),
 }
-
-#[derive(Debug)]
-pub struct UdpNet;
 
 #[derive(Debug)]
 pub(crate) struct ResponseHandle(pub(crate) Receiver<Response>);
@@ -184,7 +182,13 @@ impl Net {
                 let mut simulator = s.lock().await;
                 simulator.respond(self.address, to, uuid, response).await
             }
-            NetInner::Udp(_u) => todo!(),
+            NetInner::Nats(nn) => {
+                let envelope = Envelope {
+                    uuid,
+                    message: Message::Response(response),
+                };
+                nn.send(to, envelope).await
+            }
         }
     }
 
@@ -200,15 +204,13 @@ impl Net {
 
         let timeout = Timer::after(Duration::from_millis(10));
 
-        match &mut self.inner {
-            NetInner::Simulator(s) => {
-                for to in servers {
+        for to in servers {
+            println!("sending request {:?} to server {:?}", request, to);
+            let uuid = Uuid::new_v4();
+
+            match &mut self.inner {
+                NetInner::Simulator(s) => {
                     let mut simulator = s.lock().await;
-                    println!(
-                        "sending request {:?} to server {:?}",
-                        request, to
-                    );
-                    let uuid = Uuid::new_v4();
                     let response_handle = simulator.request(
                         self.address,
                         *to,
@@ -217,8 +219,14 @@ impl Net {
                     );
                     pending.push(response_handle);
                 }
+                NetInner::Nats(nn) => {
+                    if let Ok(response_handle) =
+                        nn.request(*to, uuid, request.clone()).await
+                    {
+                        pending.push(response_handle);
+                    }
+                }
             }
-            NetInner::Udp(_u) => todo!(),
         }
 
         TimeoutLimitedBroadcast {

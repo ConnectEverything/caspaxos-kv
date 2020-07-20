@@ -1,3 +1,4 @@
+mod nats_net;
 mod network;
 mod paxos;
 mod simulator;
