@@ -1,4 +1,4 @@
-use ngs_kv::{simulate, Client};
+use caspaxos::{simulate, Client};
 use smol::Task;
 
 fn set_client(mut client: Client) -> Task<()> {
