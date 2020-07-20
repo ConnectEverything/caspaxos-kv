@@ -57,7 +57,7 @@ pub fn simulate<T>(
 
     let mut ret: Vec<T> = vec![];
 
-    // Make the smol executor multithreaded (2 threads).
+    // Make the smol executor multithreaded (2 threads). Increases possible task interleavings.
     let (sender, receiver) = unbounded::<()>();
     let thread = std::thread::spawn(move || {
         let _ = smol::run(receiver.recv());
