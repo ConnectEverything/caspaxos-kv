@@ -10,7 +10,7 @@ use crate::{network::ResponseHandle, Envelope, Message, Request, Response};
 // TODO:
 // 0. mapping from SocketAddr -> nats topic (kind of a hack, whatever)
 //
-// 1. listener that receives from our personal nats inbox
+// 1. nats::Subscriber that receives from our personal nats inbox
 //   a. forwards Requests to self.request_inbox
 //   b. responses to self.waiting_requests
 //
