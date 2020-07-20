@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io, net::SocketAddr};
+use std::{collections::HashMap, io, net::SocketAddr, time::Duration};
 
 use super::*;
 
@@ -93,6 +93,8 @@ impl Client {
     where
         F: Fn(&VersionedValue) -> Option<Vec<u8>>,
     {
+        let mut backoff = 0;
+
         // phase 1: prepare
         // may be skipped in subsequent rounds
         while !self.cache.contains_key(&key) {
@@ -138,6 +140,10 @@ impl Client {
             if let Some(last_err_vv) = last_err_vv {
                 self.cache.insert(key.clone(), last_err_vv);
             }
+
+            backoff += 1;
+            // Exponential backoff up to 1<<5 ms = 32 ms
+            smol::Timer::after(Duration::from_millis(1 << backoff.min(5))).await;
         }
 
         // phase 2: accept
@@ -192,6 +198,10 @@ impl Client {
                     self.cache.insert(key.clone(), last_err_vv);
                 }
             }
+
+            backoff += 1;
+            // Exponential backoff up to 1<<5 ms = 32 ms
+            smol::Timer::after(Duration::from_millis(1 << backoff.min(5))).await;
         }
     }
 }

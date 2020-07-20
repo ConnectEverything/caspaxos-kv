@@ -57,10 +57,17 @@ pub fn simulate<T>(
 
     let mut ret: Vec<T> = vec![];
 
-    smol::run(async move {
+    // Make the smol executor multithreaded (2 threads). Increases possible task interleavings.
+    let (sender, receiver) = unbounded::<()>();
+    let thread = std::thread::spawn(move || {
+        let _ = smol::run(receiver.recv());
+    });
+
+    let ret = smol::run(async move {
         // start simulator
-        let simulation_runner_task =
-            Task::local(async move { simulation_runner.run().await });
+        let simulation_runner_task = Task::spawn(async move {
+            simulation_runner.run().await;
+        });
 
         let mut servers = vec![];
         let mut server_addresses = vec![];
@@ -70,7 +77,9 @@ pub fn simulate<T>(
                 db: HashMap::default(),
             };
             server_addresses.push(server.net.address);
-            let server_task = Task::local(async move { server.run().await });
+            let server_task = Task::spawn(async move {
+                server.run().await;
+            });
             servers.push(server_task);
         }
 
@@ -96,7 +105,13 @@ pub fn simulate<T>(
         drop(simulation_runner_task);
 
         ret
-    })
+    });
+
+    // Stop the executor thread.
+    drop(sender);
+    let _ = thread.join();
+
+    ret
 }
 
 #[derive(Debug)]
@@ -147,7 +162,6 @@ impl Simulator {
         if let Some(LossyDelivery::Delivery(from, to, envelope)) =
             self.in_flight.pop()
         {
-            println!("{:?} =>>>> {:?}: {:?}", from, to, envelope);
             match envelope.message {
                 Message::Request(r) => self.inboxes[&to]
                     .send((from, envelope.uuid, r))
