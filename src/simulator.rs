@@ -1,6 +1,5 @@
 use std::{
-    collections::HashMap, io, net::SocketAddr, sync::Arc,
-    time::Duration,
+    collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration,
 };
 
 use async_channel::{unbounded, Sender};
@@ -53,19 +52,15 @@ pub fn simulate<T>(
     n_servers: usize,
     client_factories: Vec<fn(Client) -> Task<T>>,
 ) -> Vec<T> {
-    let (mut nets, simulation_runner) = Net::simulation(
-        n_servers + client_factories.len(),
-        lossiness,
-    );
+    let (mut nets, simulation_runner) =
+        Net::simulation(n_servers + client_factories.len(), lossiness);
 
     let mut ret: Vec<T> = vec![];
 
     smol::run(async move {
         // start simulator
         let simulation_runner_task =
-            Task::local(async move {
-                simulation_runner.run().await
-            });
+            Task::local(async move { simulation_runner.run().await });
 
         let mut servers = vec![];
         let mut server_addresses = vec![];
@@ -75,10 +70,7 @@ pub fn simulate<T>(
                 db: HashMap::default(),
             };
             server_addresses.push(server.net.address);
-            let server_task =
-                Task::local(
-                    async move { server.run().await },
-                );
+            let server_task = Task::local(async move { server.run().await });
             servers.push(server_task);
         }
 
@@ -125,14 +117,10 @@ impl SimulatorRunner {
             let steps = {
                 let simulator = self.simulator.lock().await;
                 let mut rng = thread_rng();
-                rng.gen_range(
-                    0,
-                    simulator.in_flight.len() + 1,
-                )
+                rng.gen_range(0, simulator.in_flight.len() + 1)
             };
             for _n in 0..steps {
-                let mut simulator =
-                    self.simulator.lock().await;
+                let mut simulator = self.simulator.lock().await;
                 simulator.step().await;
             }
         }
@@ -143,12 +131,9 @@ impl SimulatorRunner {
 pub struct Simulator {
     pub(crate) lossiness: Option<u32>,
     pub(crate) in_flight: Vec<LossyDelivery>,
-    pub(crate) waiting_requests:
-        HashMap<Uuid, Sender<Response>>,
-    pub(crate) inboxes: HashMap<
-        SocketAddr,
-        Sender<(SocketAddr, Uuid, Request)>,
-    >,
+    pub(crate) waiting_requests: HashMap<Uuid, Sender<Response>>,
+    pub(crate) inboxes:
+        HashMap<SocketAddr, Sender<(SocketAddr, Uuid, Request)>>,
 }
 
 impl Simulator {
@@ -159,38 +144,26 @@ impl Simulator {
             self.in_flight.shuffle(&mut rng);
         }
 
-        if let Some(LossyDelivery::Delivery(
-            from,
-            to,
-            envelope,
-        )) = self.in_flight.pop()
+        if let Some(LossyDelivery::Delivery(from, to, envelope)) =
+            self.in_flight.pop()
         {
-            println!(
-                "{:?} =>>>> {:?}: {:?}",
-                from, to, envelope
-            );
+            println!("{:?} =>>>> {:?}: {:?}", from, to, envelope);
             match envelope.message {
                 Message::Request(r) => self.inboxes[&to]
                     .send((from, envelope.uuid, r))
                     .await
                     .unwrap(),
                 Message::Response(r) => {
-                    let waiting_request =
-                        if let Some(waiting_request) = self
-                            .waiting_requests
-                            .remove(&envelope.uuid)
-                        {
-                            waiting_request
-                        } else {
-                            // recipient no longer waiting for this message
-                            return;
-                        };
-
-                    if waiting_request
-                        .send(r)
-                        .await
-                        .is_err()
+                    let waiting_request = if let Some(waiting_request) =
+                        self.waiting_requests.remove(&envelope.uuid)
                     {
+                        waiting_request
+                    } else {
+                        // recipient no longer waiting for this message
+                        return;
+                    };
+
+                    if waiting_request.send(r).await.is_err() {
                         // recipient already finished before message delivery
                     }
                 }
@@ -216,9 +189,7 @@ impl Simulator {
 
         if let Some(lossiness) = self.lossiness {
             if rng.gen_ratio(1, lossiness) {
-                let tx = if let Some(tx) =
-                    self.waiting_requests.remove(&uuid)
-                {
+                let tx = if let Some(tx) = self.waiting_requests.remove(&uuid) {
                     tx
                 } else {
                     return Err(io::Error::new(
@@ -227,15 +198,13 @@ impl Simulator {
                     ));
                 };
 
-                self.in_flight
-                    .push(LossyDelivery::Loss(tx));
+                self.in_flight.push(LossyDelivery::Loss(tx));
                 return Ok(());
             }
         }
 
-        self.in_flight.push(LossyDelivery::Delivery(
-            from, to, envelope,
-        ));
+        self.in_flight
+            .push(LossyDelivery::Delivery(from, to, envelope));
 
         Ok(())
     }
@@ -256,19 +225,14 @@ impl Simulator {
         if let Some(lossiness) = self.lossiness {
             let mut rng = thread_rng();
             if rng.gen_ratio(1, lossiness) {
-                self.in_flight
-                    .push(LossyDelivery::Loss(tx));
+                self.in_flight.push(LossyDelivery::Loss(tx));
                 return ResponseHandle(rx);
             }
         }
 
-        assert!(self
-            .waiting_requests
-            .insert(uuid, tx)
-            .is_none());
-        self.in_flight.push(LossyDelivery::Delivery(
-            from, to, envelope,
-        ));
+        assert!(self.waiting_requests.insert(uuid, tx).is_none());
+        self.in_flight
+            .push(LossyDelivery::Delivery(from, to, envelope));
         ResponseHandle(rx)
     }
 }

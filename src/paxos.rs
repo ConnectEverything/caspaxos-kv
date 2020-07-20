@@ -18,7 +18,9 @@ impl Client {
 
     /// Get the value associated with a key, if any.
     pub async fn get(&mut self, key: Vec<u8>) -> io::Result<VersionedValue> {
-        self.consensus(key, |v| v.value.clone()).await
+        let (_old_vv, new_vv) =
+            self.consensus(key, |v| v.value.clone()).await?;
+        Ok(new_vv)
     }
 
     /// Set a key to a new value. Returns the previous set value.
@@ -26,15 +28,16 @@ impl Client {
         &mut self,
         key: Vec<u8>,
         value: Vec<u8>,
-    ) -> io::Result<()> {
-        self.consensus(key, |_| Some(value.clone())).await?;
-        Ok(())
+    ) -> io::Result<Option<Vec<u8>>> {
+        let (old_vv, _new_vv) =
+            self.consensus(key, |_| Some(value.clone())).await?;
+        Ok(old_vv.value)
     }
 
-    /// Delete a value associated with a key.
-    pub async fn del(&mut self, key: Vec<u8>) -> io::Result<()> {
-        self.consensus(key, |_| None).await?;
-        Ok(())
+    /// Delete a value associated with a key. Returns the previously set value, if any.
+    pub async fn del(&mut self, key: Vec<u8>) -> io::Result<Option<Vec<u8>>> {
+        let (old_vv, _new_vv) = self.consensus(key, |_| None).await?;
+        Ok(old_vv.value)
     }
 
     /// Given a previous versioned value, either set (with `Some`) or
@@ -46,8 +49,8 @@ impl Client {
         key: Vec<u8>,
         old: VersionedValue,
         new: Option<Vec<u8>>,
-    ) -> io::Result<Result<u64, VersionedValue>> {
-        let new_vv = self
+    ) -> io::Result<Result<VersionedValue, VersionedValue>> {
+        let (old_vv, new_vv) = self
             .consensus(key, |old_vv| {
                 if &old == old_vv {
                     new.clone()
@@ -57,8 +60,8 @@ impl Client {
             })
             .await?;
 
-        if new_vv.value == new {
-            Ok(Ok(new_vv.ballot))
+        if old_vv == old {
+            Ok(Ok(new_vv))
         } else {
             Ok(Err(new_vv))
         }
@@ -80,11 +83,13 @@ impl Client {
         responses.into_iter().map(transform).collect()
     }
 
+    // if successful in applying a function to some state,
+    // returns `Ok((old_version, new_version))`.
     async fn consensus<F>(
         &mut self,
         key: Vec<u8>,
         transform: F,
-    ) -> io::Result<VersionedValue>
+    ) -> io::Result<(VersionedValue, VersionedValue)>
     where
         F: Fn(&VersionedValue) -> Option<Vec<u8>>,
     {
@@ -137,9 +142,9 @@ impl Client {
 
         // phase 2: accept
         loop {
-            let last_value = self.cache.get(&key).unwrap().clone();
-            let new_value = transform(&last_value);
-            let ballot = last_value.ballot + 1;
+            let last_vv = self.cache.get(&key).unwrap().clone();
+            let new_value = transform(&last_vv);
+            let ballot = last_vv.ballot + 1;
             let new_vv = VersionedValue {
                 ballot,
                 value: new_value,
@@ -163,7 +168,7 @@ impl Client {
 
             if was_successful {
                 self.cache.insert(key, new_vv.clone());
-                return Ok(new_vv);
+                return Ok((last_vv, new_vv));
             }
 
             // retry
