@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     simulator::{Simulator, SimulatorRunner},
+    udp_net::UdpNet,
     Request, Response,
 };
 
@@ -34,9 +35,6 @@ pub enum NetInner {
     Simulator(Arc<Mutex<Simulator>>),
     Udp(UdpNet),
 }
-
-#[derive(Debug)]
-pub struct UdpNet;
 
 #[derive(Debug)]
 pub(crate) struct ResponseHandle(pub(crate) Receiver<Response>);

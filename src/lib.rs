@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 mod network;
 mod paxos;
 mod simulator;
+mod udp_net;
 mod versioned_storage;
 
 pub use {
@@ -10,7 +13,17 @@ pub use {
 };
 
 /// A possibly present value with an associated version number.
-#[derive(Default, Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(
+    Default,
+    Debug,
+    Clone,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+)]
 pub struct VersionedValue {
     pub ballot: u64,
     pub value: Option<Vec<u8>>,
@@ -30,20 +43,20 @@ impl std::ops::DerefMut for VersionedValue {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum Message {
     Request(Request),
     Response(Response),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum Request {
     Prepare { ballot: u64, key: Vec<u8> },
     Accept { key: Vec<u8>, value: VersionedValue },
     Ping,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum Response {
     Promise {
         success: bool,
@@ -85,7 +98,7 @@ impl Response {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Envelope {
     uuid: uuid::Uuid,
     message: Message,
