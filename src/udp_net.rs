@@ -37,9 +37,9 @@ impl UdpNet {
                     waiting_requests: Arc::new(Mutex::new(HashMap::default())),
                 })
             }
-            Err(_) => Err(io::Error::new(
+            Err(err) => Err(io::Error::new(
                 io::ErrorKind::AddrNotAvailable,
-                format!("the address {} could not be bound", addr),
+                format!("the address {} could not be bound: {}", addr, err),
             )),
         }
     }
@@ -74,7 +74,7 @@ impl UdpNet {
 
             let crc_sz = std::mem::size_of::<u32>();
             let data_buf = &buf[..n - crc_sz];
-            let crc_buf = &buf[n - crc_sz..];
+            let crc_buf = &buf[n - crc_sz..n];
 
             let mut hasher = Hasher::new();
             hasher.update(&data_buf);
@@ -101,7 +101,7 @@ impl UdpNet {
         let mut hasher = Hasher::new();
         hasher.update(&serialized);
         let hash = hasher.finalize();
-        serialized.copy_from_slice(&hash.to_le_bytes());
+        serialized.extend_from_slice(&hash.to_le_bytes());
         assert!(serialized.len() <= MSG_MAX_SZ);
 
         let n = self.socket.send_to(&serialized, to).await?;
