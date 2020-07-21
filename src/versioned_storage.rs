@@ -36,5 +36,6 @@ impl VersionedStorage {
             serialized.extend_from_slice(&value);
         }
         self.db.insert(key, serialized).expect("db io issue");
+        self.db.flush().expect("db io issue");
     }
 }
