@@ -3,7 +3,8 @@ use smol::Task;
 const SERVER_ADDRS: &[&str] = &["127.0.0.1:9999"];
 
 async fn client() {
-    let client_addr = "0.0.0.0:8888";
+    // use any available local port
+    let client_addr = "0.0.0.0:0";
     let mut client =
         caspaxos::start_udp_client(client_addr, SERVER_ADDRS).unwrap();
     dbg!(client.get(b"k1".to_vec()).await.unwrap());
