@@ -12,6 +12,8 @@ pub use {
     simulator::simulate,
 };
 
+use std::{io, net::ToSocketAddrs};
+
 /// A possibly present value with an associated version number.
 #[derive(
     Default,
@@ -102,4 +104,70 @@ impl Response {
 struct Envelope {
     uuid: uuid::Uuid,
     message: Message,
+}
+
+pub fn start_udp_client<
+    A: ToSocketAddrs + std::fmt::Display,
+    B: ToSocketAddrs + std::fmt::Display,
+>(
+    listen_addr: A,
+    servers: &[B],
+) -> std::io::Result<Client> {
+    let mut known_servers = vec![];
+
+    for server in servers {
+        let mut addrs_iter = server.to_socket_addrs()?;
+        // NB we only use the first address. this is buggy.
+        if let Some(addr) = addrs_iter.next() {
+            known_servers.push(addr);
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                format!("the address {} could not be resolved", server),
+            ));
+        }
+    }
+
+    let (process_task, net) = Net::new_udp(listen_addr)?;
+
+    let processor = smol::Task::spawn(process_task);
+
+    Ok(Client {
+        known_servers,
+        net,
+        cache: Default::default(),
+        processor: Some(processor),
+    })
+}
+
+pub fn start_udp_server<
+    A: ToSocketAddrs + std::fmt::Display,
+    P: AsRef<std::path::Path>,
+>(
+    listen_addr: A,
+    storage_directory: P,
+) -> std::io::Result<Server> {
+    let db = match sled::open(&storage_directory) {
+        Ok(db) => versioned_storage::VersionedStorage { db },
+        Err(e) => {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "failed to open database at {:?}: {:?}",
+                    storage_directory.as_ref(),
+                    e
+                ),
+            ))
+        }
+    };
+
+    let (process_task, net) = Net::new_udp(listen_addr)?;
+
+    let processor = smol::Task::spawn(process_task);
+
+    Ok(Server {
+        net,
+        db,
+        processor: Some(processor),
+    })
 }

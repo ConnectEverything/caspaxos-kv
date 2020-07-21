@@ -1,5 +1,7 @@
 use std::{collections::HashMap, io, net::SocketAddr, time::Duration};
 
+use smol::Task;
+
 use super::*;
 
 #[derive(Debug)]
@@ -7,6 +9,7 @@ pub struct Client {
     pub known_servers: Vec<SocketAddr>,
     pub net: Net,
     pub cache: HashMap<Vec<u8>, VersionedValue>,
+    pub processor: Option<Task<io::Result<()>>>,
 }
 
 impl Client {
@@ -143,7 +146,8 @@ impl Client {
 
             backoff += 1;
             // Exponential backoff up to 1<<5 ms = 32 ms
-            smol::Timer::after(Duration::from_millis(1 << backoff.min(5))).await;
+            smol::Timer::after(Duration::from_millis(1 << backoff.min(5)))
+                .await;
         }
 
         // phase 2: accept
@@ -201,7 +205,8 @@ impl Client {
 
             backoff += 1;
             // Exponential backoff up to 1<<5 ms = 32 ms
-            smol::Timer::after(Duration::from_millis(1 << backoff.min(5))).await;
+            smol::Timer::after(Duration::from_millis(1 << backoff.min(5)))
+                .await;
         }
     }
 }
@@ -210,6 +215,7 @@ impl Client {
 pub struct Server {
     pub net: Net,
     pub db: versioned_storage::VersionedStorage,
+    pub processor: Option<Task<io::Result<()>>>,
 }
 
 impl Server {

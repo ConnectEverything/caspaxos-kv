@@ -4,6 +4,7 @@ use std::{
     future::Future,
     io,
     mem::replace,
+    net::ToSocketAddrs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     pin::Pin,
     sync::Arc,
@@ -11,22 +12,21 @@ use std::{
     time::Duration,
 };
 
-use async_channel::{unbounded, Receiver, Sender};
+use async_channel::{unbounded, Receiver};
 use futures::{lock::Mutex, Stream};
-use smol::Timer;
+use smol::{Task, Timer};
 use uuid::Uuid;
 
 use crate::{
     simulator::{Simulator, SimulatorRunner},
     udp_net::UdpNet,
-    Request, Response,
+    Envelope, Message, Request, Response,
 };
 
 #[derive(Debug)]
 pub struct Net {
     pub address: SocketAddr,
     incoming: Receiver<(SocketAddr, Uuid, Request)>,
-    pending_requests: HashMap<Uuid, Sender<Response>>,
     inner: NetInner,
 }
 
@@ -112,6 +112,39 @@ impl Future for TimeoutLimitedBroadcast {
 }
 
 impl Net {
+    /// Create a new net that listens at a particular address.
+    /// Spawns a task to feed incoming messages.
+    pub fn new_udp<A: ToSocketAddrs + std::fmt::Display>(
+        listen_addr: A,
+    ) -> io::Result<(Task<io::Result<()>>, Net)> {
+        let (outgoing, incoming) = unbounded();
+
+        let mut addrs_iter = listen_addr.to_socket_addrs()?;
+        // NB we only use the first address. this is buggy.
+        let address = if let Some(address) = addrs_iter.next() {
+            address
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                format!("the address {} could not be resolved", listen_addr),
+            ));
+        };
+
+        let udp_net = UdpNet::new(listen_addr)?;
+        let udp_net_2 = udp_net.clone();
+
+        let server = Task::spawn(udp_net_2.server_loop(outgoing));
+
+        Ok((
+            server,
+            Net {
+                address,
+                incoming,
+                inner: NetInner::Udp(udp_net),
+            },
+        ))
+    }
+
     /// Create a cluster of a certain size with a certain amount of lossiness
     pub fn simulation(
         size: usize,
@@ -127,8 +160,9 @@ impl Net {
         };
 
         for i in 0..size {
+            let octet = i.try_into().unwrap();
             let address = SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::new(0, 0, 0, i.try_into().unwrap())),
+                IpAddr::V4(Ipv4Addr::new(octet, octet, octet, octet)),
                 777,
             );
 
@@ -147,7 +181,6 @@ impl Net {
             let net = Net {
                 address,
                 incoming,
-                pending_requests: HashMap::default(),
                 inner: NetInner::Simulator(simulator.clone()),
             };
             ret.push(net);
@@ -182,7 +215,16 @@ impl Net {
                 let mut simulator = s.lock().await;
                 simulator.respond(self.address, to, uuid, response).await
             }
-            NetInner::Udp(_u) => todo!(),
+            NetInner::Udp(u) => {
+                u.send_message(
+                    to,
+                    Envelope {
+                        uuid,
+                        message: Message::Response(response),
+                    },
+                )
+                .await
+            }
         }
     }
 
@@ -198,17 +240,11 @@ impl Net {
 
         let timeout = Timer::after(Duration::from_millis(10));
 
-        match &mut self.inner {
-            NetInner::Simulator(s) => {
-                for to in servers {
+        for to in servers {
+            let uuid = Uuid::new_v4();
+            match &mut self.inner {
+                NetInner::Simulator(s) => {
                     let mut simulator = s.lock().await;
-                    /*
-                    println!(
-                        "sending request {:?} to server {:?}",
-                        request, to
-                    );
-                    */
-                    let uuid = Uuid::new_v4();
                     let response_handle = simulator.request(
                         self.address,
                         *to,
@@ -217,8 +253,14 @@ impl Net {
                     );
                     pending.push(response_handle);
                 }
+                NetInner::Udp(u) => {
+                    if let Ok(response_handle) =
+                        u.request(*to, uuid, request.clone()).await
+                    {
+                        pending.push(response_handle);
+                    }
+                }
             }
-            NetInner::Udp(_u) => todo!(),
         }
 
         TimeoutLimitedBroadcast {

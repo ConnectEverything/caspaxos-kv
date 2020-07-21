@@ -78,6 +78,7 @@ pub fn simulate<T>(
                 db: VersionedStorage {
                     db: sled::Config::new().temporary(true).open().unwrap(),
                 },
+                processor: None,
             };
             server_addresses.push(server.net.address);
             let server_task = Task::spawn(async move {
@@ -92,6 +93,7 @@ pub fn simulate<T>(
                 cache: HashMap::default(),
                 known_servers: server_addresses.clone(),
                 net: nets.pop().unwrap(),
+                processor: None,
             };
             let client_task = client_factory(client);
 
