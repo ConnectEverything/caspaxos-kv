@@ -13,6 +13,7 @@ fn set_client(mut client: Client) -> Task<()> {
 
 #[test]
 fn flake_detector() {
+    #[cfg(feature = "pretty_backtrace")]
     color_backtrace::install();
 
     let n_servers = 5;

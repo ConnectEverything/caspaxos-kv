@@ -6,12 +6,14 @@ use std::{
     sync::Arc,
 };
 
-use crate::{network::ResponseHandle, Envelope, Message, Request, Response};
+use crate::{
+    network::ResponseHandle, serialization::Serialize, Envelope, Message,
+    Request, Response,
+};
 
 use async_channel::{unbounded, Sender};
-use bincode::{deserialize, serialize};
+use async_mutex::Mutex;
 use crc32fast::Hasher;
-use futures::lock::Mutex;
 use smol::Async;
 use uuid::Uuid;
 
@@ -60,7 +62,9 @@ impl UdpNet {
                             self.waiting_requests.lock().await;
                         waiting_requests.remove(&envelope.uuid).unwrap()
                     };
-                    receiver.send(res).await.unwrap();
+                    if receiver.send(res).await.is_err() {
+                        // TODO record failure metrics
+                    }
                 }
             }
         }
@@ -83,7 +87,7 @@ impl UdpNet {
             let crc_array: [u8; 4] = crc_buf.try_into().unwrap();
             assert_eq!(u32::from_le_bytes(crc_array), hash);
 
-            if let Ok(envelope) = deserialize(&buf[..n]) {
+            if let Ok(envelope) = Envelope::deserialize(&mut &buf[..n]) {
                 return Ok((from, envelope));
             } else {
                 eprintln!("failed to deserialize received message");
@@ -97,7 +101,7 @@ impl UdpNet {
         to: SocketAddr,
         envelope: Envelope,
     ) -> io::Result<()> {
-        let mut serialized = serialize(&envelope).unwrap();
+        let mut serialized: Vec<u8> = envelope.serialize();
         let mut hasher = Hasher::new();
         hasher.update(&serialized);
         let hash = hasher.finalize();

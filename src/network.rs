@@ -13,7 +13,8 @@ use std::{
 };
 
 use async_channel::{unbounded, Receiver};
-use futures::{lock::Mutex, Stream};
+use async_mutex::Mutex;
+use futures_lite::Stream;
 use smol::{Task, Timer};
 use uuid::Uuid;
 

@@ -1,7 +1,6 @@
-use serde::{Deserialize, Serialize};
-
 mod network;
 mod paxos;
+mod serialization;
 mod simulator;
 mod udp_net;
 mod versioned_storage;
@@ -15,17 +14,7 @@ pub use {
 use std::{io, net::ToSocketAddrs};
 
 /// A possibly present value with an associated version number.
-#[derive(
-    Default,
-    Debug,
-    Clone,
-    Eq,
-    PartialEq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Default, Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct VersionedValue {
     pub ballot: u64,
     pub value: Option<Vec<u8>>,
@@ -45,29 +34,35 @@ impl std::ops::DerefMut for VersionedValue {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Message {
     Request(Request),
     Response(Response),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Request {
-    Prepare { ballot: u64, key: Vec<u8> },
-    Accept { key: Vec<u8>, value: VersionedValue },
+    // discriminant 1
     Ping,
+    // discriminant 2
+    Prepare { ballot: u64, key: Vec<u8> },
+    // discriminant 3
+    Accept { key: Vec<u8>, value: VersionedValue },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Response {
+    // discriminant 4
+    Pong,
+    // discriminant 5
     Promise {
         success: bool,
         current_value: VersionedValue,
     },
+    // discriminant 6
     Accepted {
         success: Result<(), VersionedValue>,
     },
-    Pong,
 }
 
 impl Response {
@@ -100,12 +95,11 @@ impl Response {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Envelope {
     uuid: uuid::Uuid,
     message: Message,
 }
-
 pub fn start_udp_client<
     A: ToSocketAddrs + std::fmt::Display,
     B: ToSocketAddrs + std::fmt::Display,
