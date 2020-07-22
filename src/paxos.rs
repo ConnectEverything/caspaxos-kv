@@ -236,24 +236,9 @@ impl Server {
                         current_value: current_value.unwrap_or_default(),
                     }
                 }
-                Request::Accept { key, value } => {
-                    let current_value = self.db.get(&key);
-                    let success =
-                        current_value.as_ref().map(|cv| cv.ballot).unwrap_or(0)
-                            < value.ballot;
-                    if success {
-                        self.db.insert(key, value);
-                        Response::Accepted { success: Ok(()) }
-                    } else {
-                        let vv = current_value.unwrap();
-                        Response::Accepted {
-                            success: Err(VersionedValue {
-                                ballot: vv.ballot,
-                                value: vv.value.clone(),
-                            }),
-                        }
-                    }
-                }
+                Request::Accept { key, value } => Response::Accepted {
+                    success: self.db.update_if_newer(key, value),
+                },
             };
             if let Err(e) = self.net.respond(from, uuid, response).await {
                 println!("failed to respond to client: {:?}", e);
