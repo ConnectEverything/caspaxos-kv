@@ -11,9 +11,10 @@ use crate::{
     Request, Response,
 };
 
-use async_channel::{unbounded, Sender};
+use async_channel::Sender;
 use async_mutex::Mutex;
 use crc32fast::Hasher;
+use futures_channel::oneshot::{channel as oneshot, Sender as OneshotSender};
 use smol::Async;
 use uuid::Uuid;
 
@@ -23,7 +24,7 @@ const MSG_MAX_SZ: usize = 64 * 1024;
 #[derive(Debug, Clone)]
 pub struct UdpNet {
     socket: Arc<Async<UdpSocket>>,
-    waiting_requests: Arc<Mutex<HashMap<Uuid, Sender<Response>>>>,
+    waiting_requests: Arc<Mutex<HashMap<Uuid, OneshotSender<Response>>>>,
 }
 
 impl UdpNet {
@@ -62,7 +63,7 @@ impl UdpNet {
                             self.waiting_requests.lock().await;
                         waiting_requests.remove(&envelope.uuid).unwrap()
                     };
-                    if receiver.send(res).await.is_err() {
+                    if receiver.send(res).is_err() {
                         // TODO record failure metrics
                     }
                 }
@@ -72,25 +73,27 @@ impl UdpNet {
 
     /// Blocks until the next message is received.
     async fn next_message(&self) -> io::Result<(SocketAddr, Envelope)> {
-        let mut buf = [0; MSG_MAX_SZ];
+        let mut buf: [u8; MSG_MAX_SZ] = [0; MSG_MAX_SZ];
         loop {
-            let (n, from) = self.socket.recv_from(&mut buf).await.unwrap();
+            unsafe {
+                let (n, from) = self.socket.recv_from(&mut buf).await.unwrap();
 
-            let crc_sz = std::mem::size_of::<u32>();
-            let data_buf = &buf[..n - crc_sz];
-            let crc_buf = &buf[n - crc_sz..n];
+                let crc_sz = std::mem::size_of::<u32>();
+                let data_buf = &buf[..n - crc_sz];
+                let crc_buf = &buf[n - crc_sz..n];
 
-            let mut hasher = Hasher::new();
-            hasher.update(&data_buf);
-            let hash = hasher.finalize();
+                let mut hasher = Hasher::new();
+                hasher.update(&data_buf);
+                let hash = hasher.finalize();
 
-            let crc_array: [u8; 4] = crc_buf.try_into().unwrap();
-            assert_eq!(u32::from_le_bytes(crc_array), hash);
+                let crc_array: [u8; 4] = crc_buf.try_into().unwrap();
+                assert_eq!(u32::from_le_bytes(crc_array), hash);
 
-            if let Ok(envelope) = Envelope::deserialize(&mut &buf[..n]) {
-                return Ok((from, envelope));
-            } else {
-                eprintln!("failed to deserialize received message");
+                if let Ok(envelope) = Envelope::deserialize(&mut &buf[..n]) {
+                    return Ok((from, envelope));
+                } else {
+                    eprintln!("failed to deserialize received message");
+                }
             }
         }
     }
@@ -119,7 +122,7 @@ impl UdpNet {
         uuid: Uuid,
         request: Request,
     ) -> io::Result<ResponseHandle> {
-        let (tx, rx) = unbounded();
+        let (tx, rx) = oneshot();
         let envelope = Envelope {
             uuid,
             message: Message::Request(request),

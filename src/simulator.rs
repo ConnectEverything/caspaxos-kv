@@ -4,6 +4,7 @@ use std::{
 
 use async_channel::{unbounded, Sender};
 use async_mutex::Mutex;
+use futures_channel::oneshot::{channel as oneshot, Sender as OneshotSender};
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use smol::{Task, Timer};
 use uuid::Uuid;
@@ -121,7 +122,7 @@ pub fn simulate<T>(
 
 #[derive(Debug)]
 pub(crate) enum LossyDelivery {
-    Loss(Sender<Response>),
+    Loss(OneshotSender<Response>),
     Delivery(SocketAddr, SocketAddr, Envelope),
 }
 
@@ -151,7 +152,7 @@ impl SimulatorRunner {
 pub struct Simulator {
     pub(crate) lossiness: Option<u32>,
     pub(crate) in_flight: Vec<LossyDelivery>,
-    pub(crate) waiting_requests: HashMap<Uuid, Sender<Response>>,
+    pub(crate) waiting_requests: HashMap<Uuid, OneshotSender<Response>>,
     pub(crate) inboxes:
         HashMap<SocketAddr, Sender<(SocketAddr, Uuid, Request)>>,
 }
@@ -182,7 +183,7 @@ impl Simulator {
                         return;
                     };
 
-                    if waiting_request.send(r).await.is_err() {
+                    if waiting_request.send(r).is_err() {
                         // recipient already finished before message delivery
                     }
                 }
@@ -208,14 +209,15 @@ impl Simulator {
 
         if let Some(lossiness) = self.lossiness {
             if rng.gen_ratio(1, lossiness) {
-                let tx = if let Some(tx) = self.waiting_requests.remove(&uuid) {
-                    tx
-                } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::BrokenPipe,
-                        "Net::respond failed",
-                    ));
-                };
+                let tx: OneshotSender<_> =
+                    if let Some(tx) = self.waiting_requests.remove(&uuid) {
+                        tx
+                    } else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::BrokenPipe,
+                            "Net::respond failed",
+                        ));
+                    };
 
                 self.in_flight.push(LossyDelivery::Loss(tx));
                 return Ok(());
@@ -235,7 +237,7 @@ impl Simulator {
         uuid: Uuid,
         request: Request,
     ) -> ResponseHandle {
-        let (tx, rx) = unbounded();
+        let (tx, rx) = oneshot();
         let envelope = Envelope {
             uuid,
             message: Message::Request(request),

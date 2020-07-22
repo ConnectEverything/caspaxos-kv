@@ -12,9 +12,9 @@ use std::{
     time::Duration,
 };
 
-use async_channel::{unbounded, Receiver};
+use async_channel::Receiver;
 use async_mutex::Mutex;
-use futures_lite::Stream;
+use futures_channel::oneshot::Receiver as OneshotReceiver;
 use smol::{Task, Timer};
 use uuid::Uuid;
 
@@ -38,7 +38,7 @@ pub enum NetInner {
 }
 
 #[derive(Debug)]
-pub(crate) struct ResponseHandle(pub(crate) Receiver<Response>);
+pub(crate) struct ResponseHandle(pub(crate) OneshotReceiver<Response>);
 
 // TODO can just do ResponseHandle(Box::pin(async { stream.next().await ... }))
 impl Future for ResponseHandle {
@@ -47,9 +47,9 @@ impl Future for ResponseHandle {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         unsafe {
             if let Poll::Ready(response) =
-                Pin::new_unchecked(&mut self.0).poll_next(cx)
+                Pin::new_unchecked(&mut self.0).poll(cx)
             {
-                let response = if let Some(response) = response {
+                let response = if let Ok(response) = response {
                     Ok(response)
                 } else {
                     Err(io::Error::new(
@@ -118,7 +118,7 @@ impl Net {
     pub fn new_udp<A: ToSocketAddrs + std::fmt::Display>(
         listen_addr: A,
     ) -> io::Result<(Task<io::Result<()>>, Net)> {
-        let (outgoing, incoming) = unbounded();
+        let (outgoing, incoming) = async_channel::unbounded();
 
         let mut addrs_iter = listen_addr.to_socket_addrs()?;
         // NB we only use the first address. this is buggy.
@@ -167,7 +167,7 @@ impl Net {
                 777,
             );
 
-            let (outgoing, incoming) = unbounded();
+            let (outgoing, incoming) = async_channel::unbounded();
 
             simulator.inboxes.insert(address, outgoing);
 

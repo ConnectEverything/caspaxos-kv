@@ -35,5 +35,6 @@ fn main() {
         let server = Task::spawn(server());
         let client = Task::spawn(client());
         client.await;
+        drop(server);
     });
 }
