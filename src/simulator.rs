@@ -3,7 +3,7 @@ use std::{
 };
 
 use async_channel::{unbounded, Sender};
-use futures::lock::Mutex;
+use async_mutex::Mutex;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use smol::{Task, Timer};
 use uuid::Uuid;

@@ -20,26 +20,37 @@ impl Client {
     }
 
     /// Get the value associated with a key, if any.
-    pub async fn get(&mut self, key: Vec<u8>) -> io::Result<VersionedValue> {
+    pub async fn get<K: AsRef<[u8]>>(
+        &mut self,
+        key: K,
+    ) -> io::Result<VersionedValue> {
         let (_old_vv, new_vv) =
-            self.consensus(key, |v| v.value.clone()).await?;
+            self.consensus(key.as_ref(), |v| v.value.clone()).await?;
         Ok(new_vv)
     }
 
     /// Set a key to a new value. Returns the previous set value.
-    pub async fn set(
+    pub async fn set<K, V>(
         &mut self,
-        key: Vec<u8>,
-        value: Vec<u8>,
-    ) -> io::Result<Option<Vec<u8>>> {
-        let (old_vv, _new_vv) =
-            self.consensus(key, |_| Some(value.clone())).await?;
+        key: K,
+        value: V,
+    ) -> io::Result<Option<Vec<u8>>>
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>,
+    {
+        let (old_vv, _new_vv) = self
+            .consensus(key.as_ref(), |_| Some(value.as_ref().to_vec()))
+            .await?;
         Ok(old_vv.value)
     }
 
     /// Delete a value associated with a key. Returns the previously set value, if any.
-    pub async fn del(&mut self, key: Vec<u8>) -> io::Result<Option<Vec<u8>>> {
-        let (old_vv, _new_vv) = self.consensus(key, |_| None).await?;
+    pub async fn del<K: AsRef<[u8]>>(
+        &mut self,
+        key: K,
+    ) -> io::Result<Option<Vec<u8>>> {
+        let (old_vv, _new_vv) = self.consensus(key.as_ref(), |_| None).await?;
         Ok(old_vv.value)
     }
 
@@ -47,14 +58,14 @@ impl Client {
     /// delete (with `None`) a new value. Returns either `Ok(new_version)`
     /// or `Err(current_versioned_value)`. Returns an error if the old value is not
     /// correctly guessed.
-    pub async fn compare_and_swap(
+    pub async fn compare_and_swap<K: AsRef<[u8]>>(
         &mut self,
-        key: Vec<u8>,
+        key: K,
         old: VersionedValue,
         new: Option<Vec<u8>>,
     ) -> io::Result<Result<VersionedValue, VersionedValue>> {
         let (old_vv, new_vv) = self
-            .consensus(key, |old_vv| {
+            .consensus(key.as_ref(), |old_vv| {
                 if &old == old_vv {
                     new.clone()
                 } else {
@@ -90,7 +101,7 @@ impl Client {
     // returns `Ok((old_version, new_version))`.
     async fn consensus<F>(
         &mut self,
-        key: Vec<u8>,
+        key: &[u8],
         transform: F,
     ) -> io::Result<(VersionedValue, VersionedValue)>
     where
@@ -100,12 +111,12 @@ impl Client {
 
         // phase 1: prepare
         // may be skipped in subsequent rounds
-        while !self.cache.contains_key(&key) {
+        while !self.cache.contains_key(key) {
             let promises = self
                 .majority(
                     Request::Prepare {
                         ballot: 1,
-                        key: key.clone(),
+                        key: key.to_vec(),
                     },
                     Response::to_promise,
                 )
@@ -122,7 +133,7 @@ impl Client {
                     .max()
                     .unwrap();
 
-                self.cache.insert(key.clone(), last_vv);
+                self.cache.insert(key.to_vec(), last_vv);
 
                 break;
             }
@@ -141,7 +152,7 @@ impl Client {
                 promises.into_iter().filter(|p| !p.0).map(|p| p.1).max();
 
             if let Some(last_err_vv) = last_err_vv {
-                self.cache.insert(key.clone(), last_err_vv);
+                self.cache.insert(key.to_vec(), last_err_vv);
             }
 
             backoff += 1;
@@ -152,7 +163,7 @@ impl Client {
 
         // phase 2: accept
         loop {
-            let last_vv = self.cache.get(&key).unwrap().clone();
+            let last_vv = self.cache.get(key).unwrap().clone();
             let new_value = transform(&last_vv);
             let ballot = last_vv.ballot + 1;
             let new_vv = VersionedValue {
@@ -162,7 +173,7 @@ impl Client {
             let accepts = self
                 .majority(
                     Request::Accept {
-                        key: key.clone(),
+                        key: key.to_vec(),
                         value: new_vv.clone(),
                     },
                     Response::to_accepted,
@@ -177,7 +188,7 @@ impl Client {
             let was_successful = successes > self.known_servers.len() / 2;
 
             if was_successful {
-                self.cache.insert(key, new_vv.clone());
+                self.cache.insert(key.to_vec(), new_vv.clone());
                 return Ok((last_vv, new_vv));
             }
 
@@ -199,7 +210,7 @@ impl Client {
 
             if let Some(last_err_vv) = last_err_vv {
                 if last_err_vv.ballot > ballot {
-                    self.cache.insert(key.clone(), last_err_vv);
+                    self.cache.insert(key.to_vec(), last_err_vv);
                 }
             }
 
@@ -237,7 +248,7 @@ impl Server {
                     }
                 }
                 Request::Accept { key, value } => Response::Accepted {
-                    success: self.db.update_if_newer(key, value),
+                    success: self.db.update_if_newer(&key, value),
                 },
             };
             if let Err(e) = self.net.respond(from, uuid, response).await {

@@ -70,6 +70,7 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
 
 #[test]
 fn cas_linearizability() {
+    #[cfg(feature = "pretty_backtrace")]
     color_backtrace::install();
 
     let n_servers = 3;
@@ -93,6 +94,7 @@ fn cas_linearizability() {
 
 #[test]
 fn basic() {
+    #[cfg(feature = "pretty_backtrace")]
     color_backtrace::install();
 
     fn basic_client_ops(mut client: Client) -> Task<()> {
