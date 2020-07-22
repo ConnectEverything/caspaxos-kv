@@ -7,16 +7,17 @@ async fn client() {
     let client_addr = "0.0.0.0:0";
     let mut client =
         caspaxos::start_udp_client(client_addr, SERVER_ADDRS).unwrap();
-    dbg!(client.get(b"k1".to_vec()).await.unwrap());
-    dbg!(client.set(b"k1".to_vec(), b"v1".to_vec()).await.unwrap());
-    let current = dbg!(client.get(b"k1".to_vec()).await.unwrap());
-    dbg!(client
+    client.get(b"k1".to_vec()).await.unwrap();
+    client.set(b"k1".to_vec(), b"v1".to_vec()).await.unwrap();
+    let current = client.get(b"k1".to_vec()).await.unwrap();
+    client
         .compare_and_swap(b"k1".to_vec(), current, Some(b"v2".to_vec()))
         .await
-        .unwrap());
-    let current = dbg!(client.get(b"k1".to_vec()).await.unwrap());
-    let current = dbg!(client.del(b"k1".to_vec()).await.unwrap());
-    let current = dbg!(client.get(b"k1".to_vec()).await.unwrap());
+        .unwrap()
+        .unwrap();
+    client.get(b"k1".to_vec()).await.unwrap();
+    client.del(b"k1".to_vec()).await.unwrap();
+    client.get(b"k1".to_vec()).await.unwrap();
 }
 
 async fn server() {
@@ -30,5 +31,6 @@ fn main() {
         let server = Task::spawn(server());
         let client = Task::spawn(client());
         client.await;
+        drop(server);
     });
 }

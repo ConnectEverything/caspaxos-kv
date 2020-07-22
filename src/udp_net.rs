@@ -73,8 +73,7 @@ impl UdpNet {
 
     /// Blocks until the next message is received.
     async fn next_message(&self) -> io::Result<(SocketAddr, Envelope)> {
-        static mut buf: [u8; MSG_MAX_SZ] = [0; MSG_MAX_SZ];
-        //unsafe { MaybeUninit::uninit().assume_init() };
+        let mut buf: [u8; MSG_MAX_SZ] = [0; MSG_MAX_SZ];
         loop {
             unsafe {
                 let (n, from) = self.socket.recv_from(&mut buf).await.unwrap();
