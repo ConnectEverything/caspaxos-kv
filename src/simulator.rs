@@ -134,7 +134,7 @@ impl SimulatorRunner {
     /// Handle message delivery for the backing `Simulator`.
     pub async fn run(self) {
         loop {
-            Timer::after(Duration::from_millis(1)).await;
+            Timer::new(Duration::from_millis(1)).await;
             let steps = {
                 let simulator = self.simulator.lock().await;
                 let mut rng = thread_rng();

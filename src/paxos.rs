@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io, net::SocketAddr, time::Duration};
 
-use smol::Task;
+use smol::{Task, Timer};
 
 use super::*;
 
@@ -157,8 +157,7 @@ impl Client {
 
             backoff += 1;
             // Exponential backoff up to 1<<5 ms = 32 ms
-            smol::Timer::after(Duration::from_millis(1 << backoff.min(5)))
-                .await;
+            Timer::new(Duration::from_millis(1 << backoff.min(5))).await;
         }
 
         // phase 2: accept
@@ -216,8 +215,7 @@ impl Client {
 
             backoff += 1;
             // Exponential backoff up to 1<<5 ms = 32 ms
-            smol::Timer::after(Duration::from_millis(1 << backoff.min(5)))
-                .await;
+            Timer::new(Duration::from_millis(1 << backoff.min(5))).await;
         }
     }
 }
