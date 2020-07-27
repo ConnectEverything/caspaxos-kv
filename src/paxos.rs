@@ -1,8 +1,24 @@
 use std::{collections::HashMap, io, net::SocketAddr, time::Duration};
 
+use rand::{thread_rng, Rng};
 use smol::{Task, Timer};
 
 use super::*;
+
+fn backoff_generator() -> impl FnMut() -> Timer {
+    let mut backoff = 0;
+
+    move || {
+        backoff += 1;
+        // Exponential backoff up to 1<<5 ms = 32 ms
+        let truncated_exponential_backoff =
+            Duration::from_millis(1 << backoff.min(5));
+        let mut rng = thread_rng();
+        let randomized_amount = Duration::from_micros(rng.gen_range(0, 3200));
+        let total_backoff = truncated_exponential_backoff + randomized_amount;
+        Timer::new(total_backoff)
+    }
+}
 
 #[derive(Debug)]
 pub struct Client {
@@ -107,7 +123,7 @@ impl Client {
     where
         F: Fn(&VersionedValue) -> Option<Vec<u8>>,
     {
-        let mut backoff = 0;
+        let mut backoff = backoff_generator();
 
         // phase 1: prepare
         // may be skipped in subsequent rounds
@@ -155,9 +171,7 @@ impl Client {
                 self.cache.insert(key.to_vec(), last_err_vv);
             }
 
-            backoff += 1;
-            // Exponential backoff up to 1<<5 ms = 32 ms
-            Timer::new(Duration::from_millis(1 << backoff.min(5))).await;
+            backoff().await;
         }
 
         // phase 2: accept
@@ -208,14 +222,14 @@ impl Client {
                 .max();
 
             if let Some(last_err_vv) = last_err_vv {
-                if last_err_vv.ballot > ballot {
+                if last_err_vv.ballot >= ballot {
                     self.cache.insert(key.to_vec(), last_err_vv);
+                } else {
+                    println!("not updating ballot");
                 }
             }
 
-            backoff += 1;
-            // Exponential backoff up to 1<<5 ms = 32 ms
-            Timer::new(Duration::from_millis(1 << backoff.min(5))).await;
+            backoff().await;
         }
     }
 }
