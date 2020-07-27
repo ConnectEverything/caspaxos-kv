@@ -164,7 +164,7 @@ impl Net {
             let octet = i.try_into().unwrap();
             let address = SocketAddr::new(
                 IpAddr::V4(Ipv4Addr::new(octet, octet, octet, octet)),
-                777,
+                octet as u16,
             );
 
             let (outgoing, incoming) = async_channel::unbounded();

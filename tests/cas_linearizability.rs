@@ -40,7 +40,9 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
 
         let mut witnessed: Vec<VersionedValue> = vec![last_known.clone()];
 
-        for _ in 0..10_usize {
+        let mut successes = 0;
+
+        while successes < 10 {
             let incremented = increment(&last_known);
 
             let res = client
@@ -55,6 +57,7 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
                 Ok(Ok(new_vv)) => {
                     witnessed.push(new_vv.clone());
                     last_known = new_vv;
+                    successes += 1;
                 }
                 Ok(Err(current_vv)) => {
                     witnessed.push(current_vv.clone());
