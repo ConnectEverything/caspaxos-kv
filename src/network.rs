@@ -27,6 +27,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Net {
     pub address: SocketAddr,
+    pub timeout: Option<Duration>,
     incoming: Receiver<(SocketAddr, Uuid, Request)>,
     inner: NetInner,
 }
@@ -70,7 +71,7 @@ impl Future for ResponseHandle {
 struct TimeoutLimitedBroadcast {
     pending: Vec<ResponseHandle>,
     complete: Vec<Response>,
-    timeout: Timer,
+    timeout: Option<Timer>,
     wait_for: usize,
 }
 
@@ -101,11 +102,12 @@ impl Future for TimeoutLimitedBroadcast {
             return Poll::Ready(replace(&mut self.complete, vec![]));
         }
 
-        unsafe {
-            if let Poll::Ready(_) =
-                Pin::new_unchecked(&mut self.timeout).poll(cx)
-            {
-                return Poll::Ready(replace(&mut self.complete, vec![]));
+        if let Some(ref mut timeout) = self.timeout {
+            unsafe {
+                if let Poll::Ready(_) = Pin::new_unchecked(timeout).poll(cx) {
+                    println!("timeout");
+                    return Poll::Ready(replace(&mut self.complete, vec![]));
+                }
             }
         }
         Poll::Pending
@@ -117,6 +119,7 @@ impl Net {
     /// Spawns a task to feed incoming messages.
     pub fn new_udp<A: ToSocketAddrs + std::fmt::Display>(
         listen_addr: A,
+        timeout: Duration,
     ) -> io::Result<(Task<io::Result<()>>, Net)> {
         let (outgoing, incoming) = async_channel::unbounded();
 
@@ -140,6 +143,7 @@ impl Net {
             server,
             Net {
                 address,
+                timeout: Some(timeout),
                 incoming,
                 inner: NetInner::Udp(udp_net),
             },
@@ -150,6 +154,7 @@ impl Net {
     pub fn simulation(
         size: usize,
         lossiness: Option<u32>,
+        timeout: Option<std::time::Duration>,
     ) -> (Vec<Net>, SimulatorRunner) {
         let mut rxs = vec![];
 
@@ -181,6 +186,7 @@ impl Net {
         for (address, incoming) in rxs {
             let net = Net {
                 address,
+                timeout,
                 incoming,
                 inner: NetInner::Simulator(simulator.clone()),
             };
@@ -239,7 +245,7 @@ impl Net {
     ) -> Vec<Response> {
         let mut pending = vec![];
 
-        let timeout = Timer::new(Duration::from_millis(10));
+        let timeout = self.timeout.map(|timeout| Timer::new(timeout));
 
         for to in servers {
             let uuid = Uuid::new_v4();

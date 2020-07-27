@@ -20,11 +20,21 @@ fn backoff_generator() -> impl FnMut() -> Timer {
     }
 }
 
+fn timeout() -> io::Result<()> {
+    Err(io::Error::new(io::ErrorKind::TimedOut, "request timed out"))
+}
+
+#[derive(Debug, Default)]
+pub struct CacheEntry {
+    value: VersionedValue,
+    last_attempt_was_successful: bool,
+}
+
 #[derive(Debug)]
 pub struct Client {
     pub known_servers: Vec<SocketAddr>,
     pub net: Net,
-    pub cache: HashMap<Vec<u8>, VersionedValue>,
+    pub cache: HashMap<Vec<u8>, CacheEntry>,
     pub processor: Option<Task<io::Result<()>>>,
 }
 
@@ -113,25 +123,32 @@ impl Client {
         responses.into_iter().map(transform).collect()
     }
 
-    // if successful in applying a function to some state,
-    // returns `Ok((old_version, new_version))`.
-    async fn consensus<F>(
+    async fn prepare(
         &mut self,
         key: &[u8],
-        transform: F,
-    ) -> io::Result<(VersionedValue, VersionedValue)>
-    where
-        F: Fn(&VersionedValue) -> Option<Vec<u8>>,
-    {
+    ) -> io::Result<(VersionedValue, u64)> {
+        // may be skipped in subsequent rounds if `last_attempt_was_successful`
         let mut backoff = backoff_generator();
+        loop {
+            let last_known_entry = self.cache.entry(key.to_vec()).or_default();
 
-        // phase 1: prepare
-        // may be skipped in subsequent rounds
-        while !self.cache.contains_key(key) {
+            if last_known_entry.last_attempt_was_successful {
+                let last_vv = last_known_entry.value.clone();
+                // add 1 to the previous successful ballot
+                let next_ballot = last_known_entry.value.ballot + 1;
+                return Ok((last_vv, next_ballot));
+            }
+
+            // must gather a majority of successful Promise responses
+            // before we can correctly move on to phase 2
+
+            // propose the last ballot + 1
+            let proposed_ballot = last_known_entry.value.ballot + 1;
+
             let promises = self
                 .majority(
                     Request::Prepare {
-                        ballot: 1,
+                        ballot: proposed_ballot,
                         key: key.to_vec(),
                     },
                     Response::to_promise,
@@ -147,20 +164,19 @@ impl Client {
                     .filter(|p| p.0)
                     .map(|p| p.1)
                     .max()
-                    .unwrap();
+                    .unwrap()
+                    .clone();
 
-                self.cache.insert(key.to_vec(), last_vv);
+                // we can now safely move on to phase 2 after gathering
+                // a majority of promises for our proposed ballot
 
-                break;
+                return Ok((last_vv, proposed_ballot));
             }
 
             let was_retryable = promises.len() > self.known_servers.len() / 2;
 
             if !was_retryable {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "request timed out",
-                ));
+                timeout()?;
             }
 
             // retry
@@ -168,19 +184,40 @@ impl Client {
                 promises.into_iter().filter(|p| !p.0).map(|p| p.1).max();
 
             if let Some(last_err_vv) = last_err_vv {
-                self.cache.insert(key.to_vec(), last_err_vv);
+                if last_err_vv.ballot >= proposed_ballot {
+                    let cache_entry = CacheEntry {
+                        last_attempt_was_successful: false,
+                        value: last_err_vv,
+                    };
+                    self.cache.insert(key.to_vec(), cache_entry);
+                }
             }
 
             backoff().await;
         }
+    }
 
-        // phase 2: accept
+    // if successful in applying a function to some state,
+    // returns `Ok((old_version, new_version))`.
+    async fn consensus<F>(
+        &mut self,
+        key: &[u8],
+        transform: F,
+    ) -> io::Result<(VersionedValue, VersionedValue)>
+    where
+        F: Fn(&VersionedValue) -> Option<Vec<u8>>,
+    {
+        let mut backoff = backoff_generator();
+
         loop {
-            let last_vv = self.cache.get(key).unwrap().clone();
+            // phase 1: prepare
+            let (last_vv, proposed_ballot): (VersionedValue, u64) =
+                self.prepare(key).await?;
+
+            // phase 2: accept
             let new_value = transform(&last_vv);
-            let ballot = last_vv.ballot + 1;
             let new_vv = VersionedValue {
-                ballot,
+                ballot: proposed_ballot,
                 value: new_value,
             };
             let accepts = self
@@ -201,7 +238,11 @@ impl Client {
             let was_successful = successes > self.known_servers.len() / 2;
 
             if was_successful {
-                self.cache.insert(key.to_vec(), new_vv.clone());
+                let cache_entry = CacheEntry {
+                    last_attempt_was_successful: true,
+                    value: new_vv.clone(),
+                };
+                self.cache.insert(key.to_vec(), cache_entry);
                 return Ok((last_vv, new_vv));
             }
 
@@ -209,10 +250,7 @@ impl Client {
             let was_retryable = accepts.len() > self.known_servers.len() / 2;
 
             if !was_retryable {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "request timed out",
-                ));
+                timeout()?;
             }
 
             let last_err_vv = accepts
@@ -222,10 +260,12 @@ impl Client {
                 .max();
 
             if let Some(last_err_vv) = last_err_vv {
-                if last_err_vv.ballot >= ballot {
-                    self.cache.insert(key.to_vec(), last_err_vv);
-                } else {
-                    println!("not updating ballot");
+                if last_err_vv.ballot >= proposed_ballot {
+                    let cache_entry = CacheEntry {
+                        last_attempt_was_successful: false,
+                        value: last_err_vv,
+                    };
+                    self.cache.insert(key.to_vec(), cache_entry);
                 }
             }
 

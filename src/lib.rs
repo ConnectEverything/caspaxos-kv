@@ -106,6 +106,7 @@ pub fn start_udp_client<
 >(
     listen_addr: A,
     servers: &[B],
+    timeout: std::time::Duration,
 ) -> std::io::Result<Client> {
     let mut known_servers = vec![];
 
@@ -122,7 +123,7 @@ pub fn start_udp_client<
         }
     }
 
-    let (process_task, net) = Net::new_udp(listen_addr)?;
+    let (process_task, net) = Net::new_udp(listen_addr, timeout)?;
 
     let processor = smol::Task::spawn(process_task);
 
@@ -140,6 +141,7 @@ pub fn start_udp_server<
 >(
     listen_addr: A,
     storage_directory: P,
+    timeout: std::time::Duration,
 ) -> std::io::Result<Server> {
     let db = match sled::open(&storage_directory) {
         Ok(db) => versioned_storage::VersionedStorage { db },
@@ -155,7 +157,7 @@ pub fn start_udp_server<
         }
     };
 
-    let (process_task, net) = Net::new_udp(listen_addr)?;
+    let (process_task, net) = Net::new_udp(listen_addr, timeout)?;
 
     let processor = smol::Task::spawn(process_task);
 

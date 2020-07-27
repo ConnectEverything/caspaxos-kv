@@ -53,9 +53,10 @@ pub fn simulate<T>(
     lossiness: Option<u32>,
     n_servers: usize,
     client_factories: Vec<fn(Client) -> Task<T>>,
+    timeout: Option<std::time::Duration>,
 ) -> Vec<T> {
     let (mut nets, simulation_runner) =
-        Net::simulation(n_servers + client_factories.len(), lossiness);
+        Net::simulation(n_servers + client_factories.len(), lossiness, timeout);
 
     let mut ret: Vec<T> = vec![];
 
@@ -168,6 +169,7 @@ impl Simulator {
         if let Some(LossyDelivery::Delivery(from, to, envelope)) =
             self.in_flight.pop()
         {
+            //println!("{:?} -> {:?}: {:?}", from, to, envelope.message);
             match envelope.message {
                 Message::Request(r) => self.inboxes[&to]
                     .send((from, envelope.uuid, r))
