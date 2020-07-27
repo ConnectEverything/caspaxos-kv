@@ -2,7 +2,7 @@ use std::{
     collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration,
 };
 
-use async_channel::{unbounded, Sender};
+use async_channel::Sender;
 use async_mutex::Mutex;
 use futures_channel::oneshot::{channel as oneshot, Sender as OneshotSender};
 use rand::{seq::SliceRandom, thread_rng, Rng};
@@ -59,13 +59,7 @@ pub fn simulate<T>(
 
     let mut ret: Vec<T> = vec![];
 
-    // Make the smol executor multithreaded (2 threads). Increases possible task interleavings.
-    let (sender, receiver) = unbounded::<()>();
-    let thread = std::thread::spawn(move || {
-        let _ = smol::run(receiver.recv());
-    });
-
-    let ret = smol::run(async move {
+    smol::run(async move {
         // start simulator
         let simulation_runner_task = Task::spawn(async move {
             simulation_runner.run().await;
@@ -111,13 +105,7 @@ pub fn simulate<T>(
         drop(simulation_runner_task);
 
         ret
-    });
-
-    // Stop the executor thread.
-    drop(sender);
-    let _ = thread.join();
-
-    ret
+    })
 }
 
 #[derive(Debug)]
