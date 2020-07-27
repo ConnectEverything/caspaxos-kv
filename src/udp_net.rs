@@ -32,9 +32,9 @@ impl UdpNet {
     pub(crate) fn new<A: std::fmt::Display + ToSocketAddrs>(
         addr: A,
     ) -> io::Result<UdpNet> {
-        match Async::<UdpSocket>::bind(&addr) {
+        match UdpSocket::bind(&addr) {
             Ok(socket) => {
-                let socket = Arc::new(socket);
+                let socket = Arc::new(Async::new(socket)?);
                 Ok(UdpNet {
                     socket,
                     waiting_requests: Arc::new(Mutex::new(HashMap::default())),

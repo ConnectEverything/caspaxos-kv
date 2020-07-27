@@ -239,7 +239,7 @@ impl Net {
     ) -> Vec<Response> {
         let mut pending = vec![];
 
-        let timeout = Timer::after(Duration::from_millis(10));
+        let timeout = Timer::new(Duration::from_millis(10));
 
         for to in servers {
             let uuid = Uuid::new_v4();
