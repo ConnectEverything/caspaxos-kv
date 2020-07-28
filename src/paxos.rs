@@ -311,25 +311,21 @@ impl Server {
                     let current_value = current_value.unwrap_or_default();
 
                     let success = if successful {
-                        /*
-                        println!(
+                        log::trace!(
                             "{} returning successful promise to {} (promised: {}, proposed: {}) with value {:?}",
                             self.net.address.port(),
                             from.port(),
                             current_ballot, ballot,
                             current_value
                         );
-                        */
                         Ok(current_value)
                     } else {
-                        /*
-                        println!(
+                        log::debug!(
                             "{} returning failed promise to {} (promised: {}, we've alraeady seen: {})",
                             self.net.address.port(),
                             from.port(),
                             current_ballot, ballot,
                         );
-                        */
 
                         Err(current_ballot)
                     };

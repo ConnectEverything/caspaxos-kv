@@ -41,7 +41,7 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
             match res {
                 Ok(Ok(new_vv)) => {
                     witnessed.push(new_vv.clone());
-                    println!(
+                    log::trace!(
                         "{} successfully cas'd from {:?} to {:?}",
                         client.net.address.port(),
                         last_known.value,
@@ -51,7 +51,7 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
                     successes += 1;
                 }
                 Ok(Err(current_vv)) => {
-                    println!(
+                    log::trace!(
                         "{} failure to cas from {:?} to {:?}",
                         client.net.address.port(),
                         last_known.value,
@@ -62,7 +62,7 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
                     last_known = current_vv;
                 }
                 _ => {
-                    println!(
+                    log::trace!(
                         "{} io error with request, retrying",
                         client.net.address.port()
                     );
@@ -71,7 +71,7 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
             smol::Timer::new(std::time::Duration::from_millis(10)).await;
         }
 
-        println!(
+        log::trace!(
             "{} witnessed: {:?}",
             client.net.address.port(),
             witnessed
@@ -87,6 +87,8 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
 fn cas_exact_writes() {
     #[cfg(feature = "pretty_backtrace")]
     color_backtrace::install();
+
+    env_logger::init();
 
     let n_servers = 5;
     let n_clients = 15;
@@ -123,6 +125,8 @@ fn cas_monotonicity() {
     #[cfg(feature = "pretty_backtrace")]
     color_backtrace::install();
 
+    env_logger::init();
+
     let n_servers = 3;
     let n_clients = 15;
 
@@ -151,13 +155,15 @@ fn basic() {
     #[cfg(feature = "pretty_backtrace")]
     color_backtrace::install();
 
+    env_logger::init();
+
     fn basic_client_ops(mut client: Client) -> Task<()> {
         Task::local(async move {
             let responses = client.ping().await;
-            println!("majority pinger got {} responses", responses);
+            log::trace!("majority pinger got {} responses", responses);
 
             let set = client.set(b"k1".to_vec(), b"v1".to_vec()).await;
-            println!("set response: {:?}", set);
+            log::trace!("set response: {:?}", set);
         })
     }
 
