@@ -160,14 +160,14 @@ impl Simulator {
         {
             match envelope.message {
                 Message::Request(r) => {
-                    println!("{} -> {}: {:?}", from.port(), to.port(), r,);
+                    // println!("{} -> {}: {:?}", from.port(), to.port(), r,);
                     self.inboxes[&to]
                         .send((from, envelope.uuid, r))
                         .await
                         .unwrap()
                 }
                 Message::Response(r) => {
-                    println!("{} <- {}: {:?}", to.port(), from.port(), r,);
+                    // println!("{} <- {}: {:?}", to.port(), from.port(), r,);
                     let waiting_request = if let Some(waiting_request) =
                         self.waiting_requests.remove(&envelope.uuid)
                     {
