@@ -56,8 +56,7 @@ enum Response {
     Pong,
     // discriminant 5
     Promise {
-        success: bool,
-        current_value: VersionedValue,
+        success: Result<VersionedValue, u64>,
     },
     // discriminant 6
     Accepted {
@@ -66,13 +65,9 @@ enum Response {
 }
 
 impl Response {
-    fn to_promise(self) -> (bool, VersionedValue) {
-        if let Response::Promise {
-            success,
-            current_value,
-        } = self
-        {
-            (success, current_value)
+    fn to_promise(self) -> Result<VersionedValue, u64> {
+        if let Response::Promise { success } = self {
+            success
         } else {
             panic!("called to_promise on {:?}", self);
         }
@@ -106,6 +101,7 @@ pub fn start_udp_client<
 >(
     listen_addr: A,
     servers: &[B],
+    timeout: std::time::Duration,
 ) -> std::io::Result<Client> {
     let mut known_servers = vec![];
 
@@ -122,7 +118,7 @@ pub fn start_udp_client<
         }
     }
 
-    let (process_task, net) = Net::new_udp(listen_addr)?;
+    let (process_task, net) = Net::new_udp(listen_addr, timeout)?;
 
     let processor = smol::Task::spawn(process_task);
 
@@ -140,6 +136,7 @@ pub fn start_udp_server<
 >(
     listen_addr: A,
     storage_directory: P,
+    timeout: std::time::Duration,
 ) -> std::io::Result<Server> {
     let db = match sled::open(&storage_directory) {
         Ok(db) => versioned_storage::VersionedStorage { db },
@@ -155,7 +152,7 @@ pub fn start_udp_server<
         }
     };
 
-    let (process_task, net) = Net::new_udp(listen_addr)?;
+    let (process_task, net) = Net::new_udp(listen_addr, timeout)?;
 
     let processor = smol::Task::spawn(process_task);
 
@@ -163,5 +160,6 @@ pub fn start_udp_server<
         net,
         db,
         processor: Some(processor),
+        promises: Default::default(),
     })
 }

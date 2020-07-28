@@ -53,9 +53,10 @@ pub fn simulate<T>(
     lossiness: Option<u32>,
     n_servers: usize,
     client_factories: Vec<fn(Client) -> Task<T>>,
+    timeout: Option<std::time::Duration>,
 ) -> Vec<T> {
     let (mut nets, simulation_runner) =
-        Net::simulation(n_servers + client_factories.len(), lossiness);
+        Net::simulation(n_servers + client_factories.len(), lossiness, timeout);
 
     let mut ret: Vec<T> = vec![];
 
@@ -74,6 +75,7 @@ pub fn simulate<T>(
                     db: sled::Config::new().temporary(true).open().unwrap(),
                 },
                 processor: None,
+                promises: Default::default(),
             };
             server_addresses.push(server.net.address);
             let server_task = Task::spawn(async move {
@@ -157,11 +159,15 @@ impl Simulator {
             self.in_flight.pop()
         {
             match envelope.message {
-                Message::Request(r) => self.inboxes[&to]
-                    .send((from, envelope.uuid, r))
-                    .await
-                    .unwrap(),
+                Message::Request(r) => {
+                    log::trace!("{} -> {}: {:?}", from.port(), to.port(), r,);
+                    self.inboxes[&to]
+                        .send((from, envelope.uuid, r))
+                        .await
+                        .unwrap()
+                }
                 Message::Response(r) => {
+                    log::trace!("{} <- {}: {:?}", to.port(), from.port(), r,);
                     let waiting_request = if let Some(waiting_request) =
                         self.waiting_requests.remove(&envelope.uuid)
                     {

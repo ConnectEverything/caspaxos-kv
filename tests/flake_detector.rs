@@ -21,11 +21,13 @@ fn flake_detector() {
 
     // drop 1 in 10 messages
     let lossiness = Some(10);
-    //let lossiness = None;
+
+    // time-out requests after 10 ms
+    let timeout = Some(std::time::Duration::from_millis(10));
 
     let clients = vec![set_client as fn(Client) -> Task<_>; n_clients];
 
     for _ in 0..10 {
-        simulate(lossiness, n_servers, clients.clone());
+        simulate(lossiness, n_servers, clients.clone(), timeout);
     }
 }
