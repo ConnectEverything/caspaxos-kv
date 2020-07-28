@@ -75,6 +75,7 @@ pub fn simulate<T>(
                     db: sled::Config::new().temporary(true).open().unwrap(),
                 },
                 processor: None,
+                promises: Default::default(),
             };
             server_addresses.push(server.net.address);
             let server_task = Task::spawn(async move {
@@ -157,13 +158,16 @@ impl Simulator {
         if let Some(LossyDelivery::Delivery(from, to, envelope)) =
             self.in_flight.pop()
         {
-            //println!("{:?} -> {:?}: {:?}", from, to, envelope.message);
             match envelope.message {
-                Message::Request(r) => self.inboxes[&to]
-                    .send((from, envelope.uuid, r))
-                    .await
-                    .unwrap(),
+                Message::Request(r) => {
+                    println!("{} -> {}: {:?}", from.port(), to.port(), r,);
+                    self.inboxes[&to]
+                        .send((from, envelope.uuid, r))
+                        .await
+                        .unwrap()
+                }
                 Message::Response(r) => {
+                    println!("{} <- {}: {:?}", to.port(), from.port(), r,);
                     let waiting_request = if let Some(waiting_request) =
                         self.waiting_requests.remove(&envelope.uuid)
                     {

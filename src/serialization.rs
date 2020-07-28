@@ -118,10 +118,9 @@ impl Serialize for Envelope {
                 key.serialized_size() + value.serialized_size()
             }
             Message::Response(Response::Pong) => 0,
-            Message::Response(Response::Promise {
-                success,
-                current_value,
-            }) => success.serialized_size() + current_value.serialized_size(),
+            Message::Response(Response::Promise { success }) => {
+                success.serialized_size()
+            }
             Message::Response(Response::Accepted { success }) => {
                 if let Err(value) = success {
                     false.serialized_size() + value.serialized_size()
@@ -156,14 +155,10 @@ impl Serialize for Envelope {
                 4u8.serialize_into(buf);
                 self.uuid.serialize_into(buf);
             }
-            Message::Response(Response::Promise {
-                success,
-                current_value,
-            }) => {
+            Message::Response(Response::Promise { success }) => {
                 5u8.serialize_into(buf);
                 self.uuid.serialize_into(buf);
                 success.serialize_into(buf);
-                current_value.serialize_into(buf);
             }
             Message::Response(Response::Accepted { success }) => {
                 6u8.serialize_into(buf);
@@ -216,7 +211,6 @@ impl Serialize for Envelope {
                 // Promise
                 Message::Response(Response::Promise {
                     success: Serialize::deserialize(buf)?,
-                    current_value: Serialize::deserialize(buf)?,
                 })
             }
             6 => {
@@ -235,6 +229,37 @@ impl Serialize for Envelope {
         };
 
         Ok(Envelope { uuid, message })
+    }
+}
+
+impl<A: Serialize, B: Serialize> Serialize for Result<A, B> {
+    fn serialized_size(&self) -> usize {
+        match self {
+            Ok(a) => true.serialized_size() + a.serialized_size(),
+            Err(b) => false.serialized_size() + b.serialized_size(),
+        }
+    }
+
+    fn serialize_into(&self, buf: &mut &mut [u8]) {
+        match self {
+            Ok(a) => {
+                true.serialize_into(buf);
+                a.serialize_into(buf);
+            }
+            Err(b) => {
+                false.serialize_into(buf);
+                b.serialize_into(buf);
+            }
+        }
+    }
+
+    fn deserialize(buf: &mut &[u8]) -> Result<Result<A, B>, ()> {
+        let is_ok = bool::deserialize(buf)?;
+        if is_ok {
+            Ok(Ok(Serialize::deserialize(buf)?))
+        } else {
+            Ok(Err(Serialize::deserialize(buf)?))
+        }
     }
 }
 
@@ -442,7 +467,6 @@ mod qc {
                 1 => Response::Pong,
                 2 => Response::Promise {
                     success: Arbitrary::arbitrary(g),
-                    current_value: Arbitrary::arbitrary(g),
                 },
                 3 => Response::Accepted {
                     success: Arbitrary::arbitrary(g),

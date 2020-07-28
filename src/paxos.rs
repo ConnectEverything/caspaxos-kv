@@ -155,14 +155,13 @@ impl Client {
                 )
                 .await;
 
-            let success = promises.iter().filter(|p| p.0).count()
+            let success = promises.iter().filter(|p| p.is_ok()).count()
                 > self.known_servers.len() / 2;
 
             if success {
                 let last_vv = promises
                     .into_iter()
-                    .filter(|p| p.0)
-                    .map(|p| p.1)
+                    .filter_map(|p| p.ok())
                     .max()
                     .unwrap()
                     .clone();
@@ -180,14 +179,17 @@ impl Client {
             }
 
             // retry
-            let last_err_vv =
-                promises.into_iter().filter(|p| !p.0).map(|p| p.1).max();
+            let last_err_ballot =
+                promises.into_iter().filter_map(|p| p.err()).max();
 
-            if let Some(last_err_vv) = last_err_vv {
-                if last_err_vv.ballot >= proposed_ballot {
+            if let Some(ballot) = last_err_ballot {
+                if ballot >= proposed_ballot {
                     let cache_entry = CacheEntry {
                         last_attempt_was_successful: false,
-                        value: last_err_vv,
+                        value: VersionedValue {
+                            ballot,
+                            value: None,
+                        },
                     };
                     self.cache.insert(key.to_vec(), cache_entry);
                 }
@@ -279,6 +281,7 @@ pub struct Server {
     pub net: Net,
     pub db: versioned_storage::VersionedStorage,
     pub processor: Option<Task<io::Result<()>>>,
+    pub promises: HashMap<Vec<u8>, u64>,
 }
 
 impl Server {
@@ -289,19 +292,57 @@ impl Server {
             let response = match request {
                 Request::Ping => Response::Pong,
                 Request::Prepare { key, ballot } => {
+                    let current_promise: u64 =
+                        self.promises.get(&key).cloned().unwrap_or(0);
                     let current_value: Option<VersionedValue> =
                         self.db.get(&key);
-                    let success =
-                        current_value.as_ref().map(|cv| cv.ballot).unwrap_or(0)
-                            < ballot;
-                    Response::Promise {
-                        success,
-                        current_value: current_value.unwrap_or_default(),
+                    let current_ballot = current_value
+                        .as_ref()
+                        .map(|vv| vv.ballot + 1)
+                        .unwrap_or(0)
+                        .max(current_promise);
+
+                    let successful = current_ballot < ballot;
+
+                    if successful {
+                        self.promises.insert(key.clone(), ballot);
                     }
+
+                    let current_value = current_value.unwrap_or_default();
+
+                    let success = if successful {
+                        println!(
+                            "{} returning successful promise to {} (promised: {}, proposed: {}) with value {:?}",
+                            self.net.address.port(),
+                            from.port(),
+                            current_ballot, ballot,
+                            current_value
+                        );
+                        Ok(current_value)
+                    } else {
+                        println!(
+                            "{} returning failed promise to {} (promised: {}, proposed: {}) with value {:?}",
+                            self.net.address.port(),
+                            from.port(),
+                            current_ballot, ballot,
+                            current_value
+                        );
+
+                        Err(current_ballot)
+                    };
+
+                    Response::Promise { success }
                 }
-                Request::Accept { key, value } => Response::Accepted {
-                    success: self.db.update_if_newer(&key, value),
-                },
+                Request::Accept { key, value } => {
+                    let promise = self.promises.get(&key).unwrap_or(&0);
+                    let success = if *promise > value.ballot {
+                        let current = self.db.get(&key).unwrap_or_default();
+                        Err(current.clone())
+                    } else {
+                        self.db.update_if_newer(&key, value)
+                    };
+                    Response::Accepted { success }
+                }
             };
             if let Err(e) = self.net.respond(from, uuid, response).await {
                 println!("failed to respond to client: {:?}", e);

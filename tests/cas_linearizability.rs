@@ -14,7 +14,7 @@ fn increment(vv: &VersionedValue) -> Vec<u8> {
 
 // this client reads the previous value and tries to cas += 1 to it `N_SUCCESSES` times.
 fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
-    Task::local(async move {
+    Task::spawn(async move {
         let key = || b"k1".to_vec();
 
         // assume initial value of 0:None, which is the value for all non-set items
@@ -41,20 +41,39 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
             match res {
                 Ok(Ok(new_vv)) => {
                     witnessed.push(new_vv.clone());
+                    println!(
+                        "{} successfully cas'd from {:?} to {:?}",
+                        client.net.address.port(),
+                        last_known.value,
+                        new_vv.value
+                    );
                     last_known = new_vv;
                     successes += 1;
                 }
                 Ok(Err(current_vv)) => {
+                    println!(
+                        "{} failure to cas from {:?} to {:?}",
+                        client.net.address.port(),
+                        last_known.value,
+                        incremented
+                    );
+
                     witnessed.push(current_vv.clone());
                     last_known = current_vv;
                 }
-                _ => {}
+                _ => {
+                    println!(
+                        "{} io error with request, retrying",
+                        client.net.address.port()
+                    );
+                }
             }
+            smol::Timer::new(std::time::Duration::from_millis(10)).await;
         }
 
         println!(
-            "{:?} witnessed: {:?}",
-            client.net.address,
+            "{} witnessed: {:?}",
+            client.net.address.port(),
             witnessed
                 .iter()
                 .map(|vv| vv.value.clone())
@@ -69,8 +88,8 @@ fn cas_exact_writes() {
     #[cfg(feature = "pretty_backtrace")]
     color_backtrace::install();
 
-    let n_servers = 2;
-    let n_clients = 2;
+    let n_servers = 5;
+    let n_clients = 15;
 
     // network never loses messages
     let lossiness = None;

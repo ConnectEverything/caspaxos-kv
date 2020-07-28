@@ -56,8 +56,7 @@ enum Response {
     Pong,
     // discriminant 5
     Promise {
-        success: bool,
-        current_value: VersionedValue,
+        success: Result<VersionedValue, u64>,
     },
     // discriminant 6
     Accepted {
@@ -66,13 +65,9 @@ enum Response {
 }
 
 impl Response {
-    fn to_promise(self) -> (bool, VersionedValue) {
-        if let Response::Promise {
-            success,
-            current_value,
-        } = self
-        {
-            (success, current_value)
+    fn to_promise(self) -> Result<VersionedValue, u64> {
+        if let Response::Promise { success } = self {
+            success
         } else {
             panic!("called to_promise on {:?}", self);
         }
@@ -165,5 +160,6 @@ pub fn start_udp_server<
         net,
         db,
         processor: Some(processor),
+        promises: Default::default(),
     })
 }
