@@ -41,8 +41,8 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
             match res {
                 Ok(Ok(new_vv)) => {
                     witnessed.push(new_vv.clone());
-                    log::trace!(
-                        "{} successfully cas'd from {:?} to {:?}",
+                    log::debug!(
+                        "{} successful cas from {:?} to {:?}",
                         client.net.address.port(),
                         last_known.value,
                         new_vv.value
@@ -51,7 +51,7 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
                     successes += 1;
                 }
                 Ok(Err(current_vv)) => {
-                    log::trace!(
+                    log::debug!(
                         "{} failure to cas from {:?} to {:?}",
                         client.net.address.port(),
                         last_known.value,
