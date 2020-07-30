@@ -11,7 +11,7 @@ pretty_backtrace = ["color-backtrace"]
 debug = true
 
 [dependencies]
-sled = "0.33.0"
+sled = "0.34.2"
 rand = "0.7.3"
 uuid = { version = "0.8.1", features = ["v4"] }
 smol = "0.3.1"

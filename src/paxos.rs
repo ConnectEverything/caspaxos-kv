@@ -338,7 +338,12 @@ impl Server {
                         let current = self.db.get(&key).unwrap_or_default();
                         Err(current.clone())
                     } else {
-                        self.db.update_if_newer(&key, value)
+                        let new_ballot = value.ballot;
+                        let ret = self.db.update_if_newer(&key, value);
+                        if ret.is_ok() {
+                            self.promises.insert(key.clone(), new_ballot + 1);
+                        }
+                        ret
                     };
                     Response::Accepted { success }
                 }
