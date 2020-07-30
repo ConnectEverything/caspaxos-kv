@@ -88,6 +88,14 @@ impl Response {
             false
         }
     }
+
+    fn is_success(&self) -> bool {
+        match self {
+            Response::Pong => true,
+            Response::Accepted { success } => success.is_ok(),
+            Response::Promise { success } => success.is_ok(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

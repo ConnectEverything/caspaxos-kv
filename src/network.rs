@@ -92,13 +92,17 @@ impl Future for TimeoutLimitedBroadcast {
             }
         }
 
+        let successes = to_complete.iter().filter(|r| r.is_success()).count();
+
+        self.wait_for = self.wait_for.saturating_sub(successes);
+
         self.complete.append(&mut to_complete);
 
         while let Some(idx) = to_remove.pop() {
             self.pending.remove(idx);
         }
 
-        if self.complete.len() >= self.wait_for || self.pending.is_empty() {
+        if self.wait_for == 0 || self.pending.is_empty() {
             return Poll::Ready(replace(&mut self.complete, vec![]));
         }
 
