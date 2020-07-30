@@ -27,7 +27,7 @@ impl VersionedStorage {
         &self,
         key: &[u8],
         proposal: VersionedValue,
-    ) -> Result<(), VersionedValue> {
+    ) -> Result<(), u64> {
         // we use a sled transaction to push all concurrency concerns into the db,
         // so we can be as massively concurrent as we desire in the rest of the
         // server code
@@ -35,21 +35,14 @@ impl VersionedStorage {
             .transaction::<_, _, ()>(|db| {
                 let raw_value_opt = db.get(&key).expect("db io issue");
 
-                let (current_ballot, current_value) =
-                    if let Some(ref raw_value) = raw_value_opt {
-                        let current_ballot = u64::from_le_bytes(
-                            raw_value[..8].try_into().unwrap(),
-                        );
-
-                        let current_value = if raw_value[8..].is_empty() {
-                            None
-                        } else {
-                            Some(raw_value[8..].to_vec())
-                        };
-                        (current_ballot, current_value)
-                    } else {
-                        (0, None)
-                    };
+                let current_ballot = if let Some(ref raw_value) = raw_value_opt
+                {
+                    let current_ballot =
+                        u64::from_le_bytes(raw_value[..8].try_into().unwrap());
+                    current_ballot
+                } else {
+                    0
+                };
 
                 if proposal.ballot > current_ballot {
                     let mut serialized: Vec<u8> =
@@ -64,10 +57,7 @@ impl VersionedStorage {
 
                     Ok(Ok(()))
                 } else {
-                    Ok(Err(VersionedValue {
-                        ballot: current_ballot,
-                        value: current_value,
-                    }))
+                    Ok(Err(current_ballot))
                 }
             })
             .expect("db io error")

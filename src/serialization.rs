@@ -219,8 +219,8 @@ impl Serialize for Envelope {
                 let success = if is_ok {
                     Ok(())
                 } else {
-                    let vv = VersionedValue::deserialize(buf)?;
-                    Err(vv)
+                    let ballot = u64::deserialize(buf)?;
+                    Err(ballot)
                 };
 
                 Message::Response(Response::Accepted { success })

@@ -261,11 +261,14 @@ impl Client {
                 .map(|p| p.unwrap_err())
                 .max();
 
-            if let Some(last_err_vv) = last_err_vv {
-                if last_err_vv.ballot >= proposed_ballot {
+            if let Some(last_err_ballot) = last_err_vv {
+                if last_err_ballot >= proposed_ballot {
                     let cache_entry = CacheEntry {
                         last_attempt_was_successful: false,
-                        value: last_err_vv,
+                        value: VersionedValue {
+                            ballot: last_err_ballot,
+                            value: None,
+                        },
                     };
                     self.cache.insert(key.to_vec(), cache_entry);
                 }
@@ -335,8 +338,7 @@ impl Server {
                 Request::Accept { key, value } => {
                     let promise = self.promises.get(&key).unwrap_or(&0);
                     let success = if *promise > value.ballot {
-                        let current = self.db.get(&key).unwrap_or_default();
-                        Err(current.clone())
+                        Err(*promise)
                     } else {
                         let new_ballot = value.ballot;
                         let ret = self.db.update_if_newer(&key, value);
