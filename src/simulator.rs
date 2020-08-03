@@ -1,12 +1,10 @@
-use std::{
-    collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration,
-};
+use std::{collections::HashMap, io, net::SocketAddr, sync::Arc};
 
 use async_channel::Sender;
 use async_mutex::Mutex;
 use futures_channel::oneshot::{channel as oneshot, Sender as OneshotSender};
 use rand::{seq::SliceRandom, thread_rng, Rng};
-use smol::{Task, Timer};
+use smol::Task;
 use uuid::Uuid;
 
 use crate::{
@@ -62,7 +60,7 @@ pub fn simulate<T>(
 
     smol::run(async move {
         // start simulator
-        let simulation_runner_task = Task::spawn(async move {
+        let simulation_runner_task = Task::local(async move {
             simulation_runner.run().await;
         });
 
@@ -78,7 +76,7 @@ pub fn simulate<T>(
                 promises: Default::default(),
             };
             server_addresses.push(server.net.address);
-            let server_task = Task::spawn(async move {
+            let server_task = Task::local(async move {
                 server.run().await;
             });
             servers.push(server_task);
@@ -124,15 +122,23 @@ impl SimulatorRunner {
     /// Handle message delivery for the backing `Simulator`.
     pub async fn run(self) {
         loop {
-            Timer::new(Duration::from_millis(1)).await;
+            if !cfg!(feature = "fault_injection") {
+                smol::Timer::new(std::time::Duration::from_millis(1)).await;
+            }
+            crate::debug_delay().await;
             let steps = {
                 let simulator = self.simulator.lock().await;
                 let mut rng = thread_rng();
                 rng.gen_range(0, simulator.in_flight.len() + 1)
             };
+            smol::Timer::new(std::time::Duration::from_millis(
+                thread_rng().gen_range(0, 4),
+            ))
+            .await;
             for _n in 0..steps {
                 let mut simulator = self.simulator.lock().await;
                 simulator.step().await;
+                crate::debug_delay().await;
             }
         }
     }

@@ -1,3 +1,10 @@
+#[doc(hidden)]
+#[cfg(not(feature = "fault_injection"))]
+pub async fn debug_delay() {}
+
+mod bitset;
+#[cfg(feature = "fault_injection")]
+mod debug_delay;
 mod network;
 mod paxos;
 mod serialization;
@@ -12,6 +19,9 @@ pub use {
 };
 
 use std::{io, net::ToSocketAddrs};
+
+#[cfg(feature = "fault_injection")]
+pub use debug_delay::debug_delay;
 
 /// A possibly present value with an associated version number.
 #[derive(Default, Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]

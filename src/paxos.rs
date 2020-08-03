@@ -4,6 +4,7 @@ use rand::{thread_rng, Rng};
 use smol::{Task, Timer};
 
 use super::*;
+use crate::bitset::Bitset;
 
 fn backoff_generator() -> impl FnMut() -> Timer {
     let mut backoff = 0;
@@ -20,8 +21,8 @@ fn backoff_generator() -> impl FnMut() -> Timer {
     }
 }
 
-fn timeout() -> io::Result<()> {
-    Err(io::Error::new(io::ErrorKind::TimedOut, "request timed out"))
+fn timeout() -> io::Error {
+    io::Error::new(io::ErrorKind::TimedOut, "request timed out")
 }
 
 #[derive(Debug, Default)]
@@ -107,7 +108,11 @@ impl Client {
         }
     }
 
-    async fn majority<F, B>(&mut self, request: Request, transform: F) -> Vec<B>
+    async fn majority<F, B>(
+        &mut self,
+        request: Request,
+        transform: F,
+    ) -> Vec<(B, SocketAddr)>
     where
         F: Fn(Response) -> B,
     {
@@ -120,13 +125,20 @@ impl Client {
             )
             .await;
 
-        responses.into_iter().map(transform).collect()
+        responses
+            .into_iter()
+            .map(|(r, from)| (transform(r), from))
+            .collect()
     }
 
+    /// Returns the last known versioned value, the proposed ballot (will always
+    /// be higher than the last known versioned value), and a `Bitset` where
+    /// a bit is set for each replica that may not have seen the last known
+    /// versioned value.
     async fn prepare(
         &mut self,
         key: &[u8],
-    ) -> io::Result<(VersionedValue, u64)> {
+    ) -> io::Result<(VersionedValue, u64, Bitset)> {
         // may be skipped in subsequent rounds if `last_attempt_was_successful`
         let mut backoff = backoff_generator();
         loop {
@@ -136,7 +148,7 @@ impl Client {
                 let last_vv = last_known_entry.value.clone();
                 // add 1 to the previous successful ballot
                 let next_ballot = last_known_entry.value.ballot + 1;
-                return Ok((last_vv, next_ballot));
+                return Ok((last_vv, next_ballot, Bitset::none()));
             }
 
             // must gather a majority of successful Promise responses
@@ -155,13 +167,14 @@ impl Client {
                 )
                 .await;
 
-            let success = promises.iter().filter(|p| p.is_ok()).count()
-                > self.known_servers.len() / 2;
+            let success =
+                promises.iter().filter(|(p, _from)| p.is_ok()).count()
+                    > self.known_servers.len() / 2;
 
             if success {
                 let last_vv = promises
                     .into_iter()
-                    .filter_map(|p| p.ok())
+                    .filter_map(|(p, _from)| p.ok())
                     .max()
                     .unwrap()
                     .clone();
@@ -169,18 +182,18 @@ impl Client {
                 // we can now safely move on to phase 2 after gathering
                 // a majority of promises for our proposed ballot
 
-                return Ok((last_vv, proposed_ballot));
+                return Ok((last_vv, proposed_ballot, Bitset::none()));
             }
 
             let was_retryable = promises.len() > self.known_servers.len() / 2;
 
             if !was_retryable {
-                timeout()?;
+                return Err(timeout());
             }
 
             // retry
             let last_err_ballot =
-                promises.into_iter().filter_map(|p| p.err()).max();
+                promises.into_iter().filter_map(|(p, _from)| p.err()).max();
 
             if let Some(ballot) = last_err_ballot {
                 if ballot >= proposed_ballot {
@@ -209,73 +222,58 @@ impl Client {
     where
         F: Fn(&VersionedValue) -> Option<Vec<u8>>,
     {
-        let mut backoff = backoff_generator();
+        // phase 1: prepare
+        let (last_vv, proposed_ballot, _bitset): (VersionedValue, u64, Bitset) =
+            self.prepare(key).await?;
 
-        loop {
-            // phase 1: prepare
-            let (last_vv, proposed_ballot): (VersionedValue, u64) =
-                self.prepare(key).await?;
-
-            // phase 2: accept
-            let new_value = transform(&last_vv);
-            let new_vv = VersionedValue {
-                ballot: proposed_ballot,
-                value: new_value,
-            };
-            let accepts = self
-                .majority(
-                    Request::Accept {
-                        key: key.to_vec(),
-                        value: new_vv.clone(),
-                    },
-                    Response::to_accepted,
-                )
-                .await;
-
-            if accepts.is_empty() {
-                continue;
-            }
-
-            let successes = accepts.iter().filter(|p| p.is_ok()).count();
-            let was_successful = successes > self.known_servers.len() / 2;
-
-            if was_successful {
-                let cache_entry = CacheEntry {
-                    last_attempt_was_successful: true,
+        // phase 2: accept
+        let new_value = transform(&last_vv);
+        let new_vv = VersionedValue {
+            ballot: proposed_ballot,
+            value: new_value,
+        };
+        let accepts = self
+            .majority(
+                Request::Accept {
+                    key: key.to_vec(),
                     value: new_vv.clone(),
+                },
+                Response::to_accepted,
+            )
+            .await;
+
+        let successes = accepts.iter().filter(|(p, _from)| p.is_ok()).count();
+        let was_successful = successes > self.known_servers.len() / 2;
+
+        if was_successful {
+            let cache_entry = CacheEntry {
+                last_attempt_was_successful: true,
+                value: new_vv.clone(),
+            };
+            self.cache.insert(key.to_vec(), cache_entry);
+            return Ok((last_vv, new_vv));
+        }
+
+        let last_err_vv = accepts
+            .into_iter()
+            .filter(|(p, _from)| p.is_err())
+            .map(|(p, _from)| p.unwrap_err())
+            .max();
+
+        if let Some(last_err_ballot) = last_err_vv {
+            if last_err_ballot >= proposed_ballot {
+                let cache_entry = CacheEntry {
+                    last_attempt_was_successful: false,
+                    value: VersionedValue {
+                        ballot: last_err_ballot,
+                        value: None,
+                    },
                 };
                 self.cache.insert(key.to_vec(), cache_entry);
-                return Ok((last_vv, new_vv));
             }
-
-            // retry
-            let was_retryable = accepts.len() > self.known_servers.len() / 2;
-
-            if !was_retryable {
-                timeout()?;
-            }
-
-            let last_err_vv = accepts
-                .into_iter()
-                .filter(|p| p.is_err())
-                .map(|p| p.unwrap_err())
-                .max();
-
-            if let Some(last_err_ballot) = last_err_vv {
-                if last_err_ballot >= proposed_ballot {
-                    let cache_entry = CacheEntry {
-                        last_attempt_was_successful: false,
-                        value: VersionedValue {
-                            ballot: last_err_ballot,
-                            value: None,
-                        },
-                    };
-                    self.cache.insert(key.to_vec(), cache_entry);
-                }
-            }
-
-            backoff().await;
         }
+
+        Err(timeout())
     }
 }
 
@@ -324,7 +322,7 @@ impl Server {
                         Ok(current_value)
                     } else {
                         log::debug!(
-                            "{} returning failed promise to {} (promised: {}, we've alraeady seen: {})",
+                            "{} returning failed promise to {} (promised: {}, we've already seen: {})",
                             self.net.address.port(),
                             from.port(),
                             current_ballot, ballot,
