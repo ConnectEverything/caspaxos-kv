@@ -30,6 +30,13 @@ fn cas_client(mut client: Client) -> Task<Vec<VersionedValue>> {
         while successes < N_SUCCESSES {
             let incremented = increment(&last_known);
 
+            log::debug!(
+                "{} trying to cas from {:?} to {:?}",
+                client.net.address.port(),
+                last_known.value,
+                incremented
+            );
+
             let res = client
                 .compare_and_swap(
                     key(),
@@ -107,14 +114,14 @@ fn cas_exact_writes() {
 
     let last_value = &client_witnessed_values
         .into_iter()
-        .map(|mut wv| wv.last_mut().unwrap().value.take())
+        .map(|wv| wv.last().unwrap().clone())
         .max()
         .unwrap();
 
     let expected_last_value = &Some(vec![n_clients as u8 * N_SUCCESSES as u8]);
 
     assert_eq!(
-        last_value, expected_last_value,
+        &last_value.value, expected_last_value,
         "last value did not equal {:?}: {:?}",
         expected_last_value, last_value,
     );

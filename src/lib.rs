@@ -60,7 +60,7 @@ enum Response {
     },
     // discriminant 6
     Accepted {
-        success: Result<(), VersionedValue>,
+        success: Result<(), u64>,
     },
 }
 
@@ -73,7 +73,7 @@ impl Response {
         }
     }
 
-    fn to_accepted(self) -> Result<(), VersionedValue> {
+    fn to_accepted(self) -> Result<(), u64> {
         if let Response::Accepted { success } = self {
             success
         } else {
@@ -86,6 +86,14 @@ impl Response {
             true
         } else {
             false
+        }
+    }
+
+    fn is_success(&self) -> bool {
+        match self {
+            Response::Pong => true,
+            Response::Accepted { success } => success.is_ok(),
+            Response::Promise { success } => success.is_ok(),
         }
     }
 }
