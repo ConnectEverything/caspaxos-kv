@@ -6,6 +6,7 @@ edition = "2018"
 
 [features]
 pretty_backtrace = ["color-backtrace"]
+fault_injection = []
 
 [profile.release]
 debug = true

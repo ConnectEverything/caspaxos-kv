@@ -69,30 +69,30 @@ impl Future for ResponseHandle {
 
 #[derive(Debug)]
 struct TimeoutLimitedBroadcast {
-    pending: Vec<ResponseHandle>,
-    complete: Vec<Response>,
+    pending: Vec<(ResponseHandle, SocketAddr)>,
+    complete: Vec<(Response, SocketAddr)>,
     timeout: Option<Timer>,
     wait_for: usize,
 }
 
 impl Future for TimeoutLimitedBroadcast {
-    type Output = Vec<Response>;
+    type Output = Vec<(Response, SocketAddr)>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let mut to_remove = vec![];
-        let mut to_complete = vec![];
+        let mut to_complete: Vec<(Response, SocketAddr)> = vec![];
         for (idx, response) in self.pending.iter_mut().enumerate() {
             unsafe {
-                if let Poll::Ready(Ok(response)) =
-                    Pin::new_unchecked(response).poll(cx)
+                if let Poll::Ready(Ok(ready)) =
+                    Pin::new_unchecked(&mut response.0).poll(cx)
                 {
                     to_remove.push(idx);
-                    to_complete.push(response);
+                    to_complete.push((ready, response.1));
                 }
             }
         }
 
-        let successes = to_complete.iter().filter(|r| r.is_success()).count();
+        let successes = to_complete.iter().filter(|r| r.0.is_success()).count();
 
         self.wait_for = self.wait_for.saturating_sub(successes);
 
@@ -205,6 +205,8 @@ impl Net {
     pub(crate) async fn receive(
         &mut self,
     ) -> io::Result<(SocketAddr, Uuid, Request)> {
+        crate::debug_delay().await;
+
         if let Ok(item) = self.incoming.recv().await {
             Ok(item)
         } else {
@@ -221,6 +223,8 @@ impl Net {
         uuid: Uuid,
         response: Response,
     ) -> io::Result<()> {
+        crate::debug_delay().await;
+
         match &mut self.inner {
             NetInner::Simulator(s) => {
                 let mut simulator = s.lock().await;
@@ -246,12 +250,14 @@ impl Net {
         servers: &[SocketAddr],
         request: Request,
         wait_for: usize,
-    ) -> Vec<Response> {
+    ) -> Vec<(Response, SocketAddr)> {
         let mut pending = vec![];
 
         let timeout = self.timeout.map(|timeout| Timer::new(timeout));
 
         for to in servers {
+            crate::debug_delay().await;
+
             let uuid = Uuid::new_v4();
             match &mut self.inner {
                 NetInner::Simulator(s) => {
@@ -262,13 +268,13 @@ impl Net {
                         uuid,
                         request.clone(),
                     );
-                    pending.push(response_handle);
+                    pending.push((response_handle, *to));
                 }
                 NetInner::Udp(u) => {
                     if let Ok(response_handle) =
                         u.request(*to, uuid, request.clone()).await
                     {
-                        pending.push(response_handle);
+                        pending.push((response_handle, *to));
                     }
                 }
             }
