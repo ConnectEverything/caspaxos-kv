@@ -20,7 +20,7 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// use caspaxos::{simulate, Client};
+/// use caspaxos_kv::{simulate, Client};
 /// use smol::Task;
 /// fn set_client(mut client: Client) -> Task<()> {
 ///     Task::local(async move {

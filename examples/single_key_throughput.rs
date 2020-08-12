@@ -8,7 +8,8 @@ async fn client(key: Vec<u8>) -> usize {
     let client_addr = "0.0.0.0:0";
     let timeout = std::time::Duration::from_millis(5);
     let mut client =
-        caspaxos::start_udp_client(client_addr, SERVER_ADDRS, timeout).unwrap();
+        caspaxos_kv::start_udp_client(client_addr, SERVER_ADDRS, timeout)
+            .unwrap();
 
     let mut errors = 0_usize;
     let value = b"v1".to_vec();
@@ -23,7 +24,7 @@ async fn client(key: Vec<u8>) -> usize {
 async fn server() {
     let timeout = std::time::Duration::from_millis(5);
     let mut server =
-        caspaxos::start_udp_server(SERVER_ADDRS[0], "storage_dir", timeout)
+        caspaxos_kv::start_udp_server(SERVER_ADDRS[0], "storage_dir", timeout)
             .unwrap();
     server.run().await;
 }

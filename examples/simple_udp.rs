@@ -6,12 +6,12 @@ async fn client() {
     // use any available local port
     let client_addr = "0.0.0.0:0";
     let mut client =
-        caspaxos::start_udp_client(client_addr, SERVER_ADDRS).unwrap();
+        caspaxos_kv::start_udp_client(client_addr, SERVER_ADDRS).unwrap();
     client.get(b"k1".to_vec()).await.unwrap();
     client.set(b"k1".to_vec(), b"v1".to_vec()).await.unwrap();
     let current = client.get(b"k1".to_vec()).await.unwrap();
     client
-        .compare_and_swap(b"k1".to_vec(), current, Some(b"v2".to_vec()))
+        .cas(b"k1".to_vec(), current, Some(b"v2".to_vec()))
         .await
         .unwrap()
         .unwrap();
@@ -22,7 +22,7 @@ async fn client() {
 
 async fn server() {
     let mut server =
-        caspaxos::start_udp_server(SERVER_ADDRS[0], "storage_dir").unwrap();
+        caspaxos_kv::start_udp_server(SERVER_ADDRS[0], "storage_dir").unwrap();
     server.run().await;
 }
 

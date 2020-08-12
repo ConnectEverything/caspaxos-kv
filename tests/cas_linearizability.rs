@@ -1,4 +1,4 @@
-use caspaxos::{simulate, Client, VersionedValue};
+use caspaxos_kv::{simulate, Client, VersionedValue};
 use smol::Task;
 
 const N_SUCCESSES: usize = 3;
@@ -39,11 +39,7 @@ fn cas_client(mut client: Client) -> Task<(Vec<VersionedValue>, usize)> {
             );
 
             let res = client
-                .compare_and_swap(
-                    key(),
-                    last_known.clone(),
-                    Some(incremented.clone()),
-                )
+                .cas(key(), last_known.clone(), Some(incremented.clone()))
                 .await;
 
             match res {

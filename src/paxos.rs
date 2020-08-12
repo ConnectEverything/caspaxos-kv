@@ -85,7 +85,7 @@ impl Client {
     /// delete (with `None`) a new value. Returns either `Ok(new_version)`
     /// or `Err(current_versioned_value)`. Returns an error if the old value is not
     /// correctly guessed.
-    pub async fn compare_and_swap<K: AsRef<[u8]>>(
+    pub async fn cas<K: AsRef<[u8]>>(
         &mut self,
         key: K,
         old: VersionedValue,
