@@ -2,7 +2,7 @@
 name = "caspaxos-kv"
 description = "A simple simulator hardened KV store backed by caspaxos."
 license = "Apache-2.0"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Tyler Neely <tyler@nats.io>", "Stjepan Glavina <stjepan@nats.io>"]
 edition = "2018"
 
