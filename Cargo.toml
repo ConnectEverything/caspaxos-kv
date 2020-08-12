@@ -2,7 +2,7 @@
 name = "caspaxos-kv"
 description = "A simple simulator hardened KV store backed by caspaxos."
 license = "Apache-2.0"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Tyler Neely <tyler@nats.io>", "Stjepan Glavina <stjepan@nats.io>"]
 edition = "2018"
 
@@ -17,8 +17,8 @@ debug = true
 sled = "0.34.2"
 rand = "0.7.3"
 uuid = { version = "0.8.1", features = ["v4"] }
-smol = "0.3.1"
-async-channel = "1.1.1"
+smol = "0.3.3"
+async-channel = "1.4.0"
 color-backtrace = { version = "0.4.2", optional = true }
 crc32fast = "1.2.0"
 historian = "4.0.3"
