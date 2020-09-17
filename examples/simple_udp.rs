@@ -7,17 +7,17 @@ async fn client() {
     let mut client =
         caspaxos_kv::start_udp_client(client_addr, SERVER_ADDRS, timeout)
             .unwrap();
-    client.get(b"k1".to_vec()).await.unwrap();
-    client.set(b"k1".to_vec(), b"v1".to_vec()).await.unwrap();
-    let current = client.get(b"k1".to_vec()).await.unwrap();
-    client
+    dbg!(client.get(b"k1".to_vec()).await.unwrap());
+    dbg!(client.set(b"k1".to_vec(), b"v1".to_vec()).await.unwrap());
+    let current = dbg!(client.get(b"k1".to_vec()).await.unwrap());
+    dbg!(client
         .cas(b"k1".to_vec(), current, Some(b"v2".to_vec()))
         .await
         .unwrap()
-        .unwrap();
-    client.get(b"k1".to_vec()).await.unwrap();
-    client.del(b"k1".to_vec()).await.unwrap();
-    client.get(b"k1".to_vec()).await.unwrap();
+        .unwrap());
+    dbg!(client.get(b"k1".to_vec()).await.unwrap());
+    dbg!(client.del(b"k1".to_vec()).await.unwrap());
+    dbg!(client.get(b"k1".to_vec()).await.unwrap());
 }
 
 async fn server() {
