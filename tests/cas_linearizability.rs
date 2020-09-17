@@ -1,3 +1,5 @@
+use std::sync::Once;
+
 use caspaxos_kv::{simulate, Client, VersionedValue};
 use smol::Task;
 
@@ -97,10 +99,7 @@ fn cas_client(mut client: Client) -> Task<(Vec<VersionedValue>, usize)> {
 
 #[test]
 fn cas_exact_writes() {
-    #[cfg(feature = "pretty_backtrace")]
-    color_backtrace::install();
-
-    env_logger::init();
+    init();
 
     // NB If this test ever fails, try reducing each
     // of these variables to simplify the network trace
@@ -171,10 +170,7 @@ fn cas_exact_writes() {
 
 #[test]
 fn cas_monotonicity() {
-    #[cfg(feature = "pretty_backtrace")]
-    color_backtrace::install();
-
-    env_logger::init();
+    init();
 
     let n_servers = 3;
     let n_clients = 15;
@@ -204,10 +200,7 @@ fn cas_monotonicity() {
 
 #[test]
 fn basic() {
-    #[cfg(feature = "pretty_backtrace")]
-    color_backtrace::install();
-
-    env_logger::init();
+    init();
 
     fn basic_client_ops(mut client: Client) -> Task<()> {
         smol::spawn(async move {
@@ -230,4 +223,14 @@ fn basic() {
     let clients = vec![basic_client_ops as fn(Client) -> Task<()>];
 
     simulate(lossiness, n_servers, clients, timeout);
+}
+
+fn init() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        #[cfg(feature = "pretty_backtrace")]
+        color_backtrace::install();
+
+        env_logger::init();
+    });
 }
