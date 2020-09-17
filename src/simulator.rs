@@ -22,6 +22,8 @@ use crate::{
 /// ```
 /// use caspaxos_kv::{simulate, Client};
 /// use smol::Task;
+/// use std::time::Duration;
+///
 /// fn set_client(mut client: Client) -> Task<()> {
 ///     smol::spawn(async move {
 ///         let responses = client.ping().await;
@@ -40,11 +42,10 @@ use crate::{
 ///
 ///     // drop 1 in 10 messages
 ///     let lossiness = Some(10);
-///     //let lossiness = None;
 ///
 ///     let clients = vec![set_client as fn(Client) -> Task<_>; n_clients];
 ///
-///     simulate(lossiness, n_servers, clients);
+///     simulate(lossiness, n_servers, clients, Some(Duration::from_secs(1)));
 /// }
 /// ```
 pub fn simulate<T>(
