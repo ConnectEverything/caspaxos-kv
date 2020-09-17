@@ -14,7 +14,7 @@ fn increment(vv: &VersionedValue) -> Vec<u8> {
 
 // this client reads the previous value and tries to cas += 1 to it `N_SUCCESSES` times.
 fn cas_client(mut client: Client) -> Task<(Vec<VersionedValue>, usize)> {
-    Task::local(async move {
+    smol::spawn(async move {
         let key = || b"k1".to_vec();
 
         // assume initial value of 0:None, which is the value for all non-set items
@@ -80,7 +80,7 @@ fn cas_client(mut client: Client) -> Task<(Vec<VersionedValue>, usize)> {
                     );
                 }
             }
-            smol::Timer::new(std::time::Duration::from_millis(10)).await;
+            smol::Timer::after(std::time::Duration::from_millis(10)).await;
         }
 
         log::trace!(
@@ -210,7 +210,7 @@ fn basic() {
     env_logger::init();
 
     fn basic_client_ops(mut client: Client) -> Task<()> {
-        Task::local(async move {
+        smol::spawn(async move {
             let responses = client.ping().await;
             log::trace!("majority pinger got {} responses", responses);
 

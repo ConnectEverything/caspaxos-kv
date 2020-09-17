@@ -17,7 +17,7 @@ fn backoff_generator() -> impl FnMut() -> Timer {
         let mut rng = thread_rng();
         let randomized_amount = Duration::from_micros(rng.gen_range(0, 3200));
         let total_backoff = truncated_exponential_backoff + randomized_amount;
-        Timer::new(total_backoff)
+        Timer::after(total_backoff)
     }
 }
 

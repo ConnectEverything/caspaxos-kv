@@ -12,9 +12,9 @@ use std::{
     time::Duration,
 };
 
-use async_channel::Receiver;
-use async_mutex::Mutex;
 use futures_channel::oneshot::Receiver as OneshotReceiver;
+use smol::channel::{self, Receiver};
+use smol::lock::Mutex;
 use smol::{Task, Timer};
 use uuid::Uuid;
 
@@ -125,7 +125,7 @@ impl Net {
         listen_addr: A,
         timeout: Duration,
     ) -> io::Result<(Task<io::Result<()>>, Net)> {
-        let (outgoing, incoming) = async_channel::unbounded();
+        let (outgoing, incoming) = channel::unbounded();
 
         let mut addrs_iter = listen_addr.to_socket_addrs()?;
         // NB we only use the first address. this is buggy.
@@ -141,7 +141,7 @@ impl Net {
         let udp_net = UdpNet::new(listen_addr)?;
         let udp_net_2 = udp_net.clone();
 
-        let server = Task::spawn(udp_net_2.server_loop(outgoing));
+        let server = smol::spawn(udp_net_2.server_loop(outgoing));
 
         Ok((
             server,
@@ -176,7 +176,7 @@ impl Net {
                 octet as u16,
             );
 
-            let (outgoing, incoming) = async_channel::unbounded();
+            let (outgoing, incoming) = channel::unbounded();
 
             simulator.inboxes.insert(address, outgoing);
 
@@ -253,7 +253,7 @@ impl Net {
     ) -> Vec<(Response, SocketAddr)> {
         let mut pending = vec![];
 
-        let timeout = self.timeout.map(|timeout| Timer::new(timeout));
+        let timeout = self.timeout.map(|timeout| Timer::after(timeout));
 
         for to in servers {
             crate::debug_delay().await;

@@ -1,10 +1,10 @@
 use std::{collections::HashMap, io, net::SocketAddr, sync::Arc};
 
-use async_channel::Sender;
-use async_mutex::Mutex;
 use futures_channel::oneshot::{channel as oneshot, Sender as OneshotSender};
 use rand::{seq::SliceRandom, thread_rng, Rng};
-use smol::Task;
+use smol::channel::Sender;
+use smol::lock::Mutex;
+use smol::{Task, Timer};
 use uuid::Uuid;
 
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
 /// use caspaxos_kv::{simulate, Client};
 /// use smol::Task;
 /// fn set_client(mut client: Client) -> Task<()> {
-///     Task::local(async move {
+///     smol::spawn(async move {
 ///         let responses = client.ping().await;
 ///         println!("majority pinger got {} responses", responses);
 ///
@@ -58,9 +58,9 @@ pub fn simulate<T>(
 
     let mut ret: Vec<T> = vec![];
 
-    smol::run(async move {
+    smol::block_on(async move {
         // start simulator
-        let simulation_runner_task = Task::local(async move {
+        let simulation_runner_task = smol::spawn(async move {
             simulation_runner.run().await;
         });
 
@@ -76,7 +76,7 @@ pub fn simulate<T>(
                 promises: Default::default(),
             };
             server_addresses.push(server.net.address);
-            let server_task = Task::local(async move {
+            let server_task = smol::spawn(async move {
                 server.run().await;
             });
             servers.push(server_task);
@@ -123,18 +123,20 @@ impl SimulatorRunner {
     pub async fn run(self) {
         loop {
             if !cfg!(feature = "fault_injection") {
-                smol::Timer::new(std::time::Duration::from_millis(1)).await;
+                Timer::after(std::time::Duration::from_millis(1)).await;
             }
+
             crate::debug_delay().await;
+
             let steps = {
                 let simulator = self.simulator.lock().await;
                 let mut rng = thread_rng();
                 rng.gen_range(0, simulator.in_flight.len() + 1)
             };
-            smol::Timer::new(std::time::Duration::from_millis(
-                thread_rng().gen_range(0, 4),
-            ))
-            .await;
+
+            let ms = thread_rng().gen_range(0, 4);
+            Timer::after(std::time::Duration::from_millis(ms)).await;
+
             for _n in 0..steps {
                 let mut simulator = self.simulator.lock().await;
                 simulator.step().await;

@@ -1,5 +1,3 @@
-use smol::Task;
-
 const SERVER_ADDRS: &[&str] = &["127.0.0.1:9999"];
 const OPS: u128 = 200_000;
 
@@ -31,14 +29,14 @@ async fn server() {
 
 fn main() {
     let start = std::time::Instant::now();
-    smol::run(async {
-        let server = Task::spawn(server());
+    smol::block_on(async {
+        let server = smol::spawn(server());
         let clients = vec![
-            Task::spawn(client(b"k1".to_vec())),
-            //Task::spawn(client(b"k1".to_vec())),
-            //Task::spawn(client(b"k3".to_vec())),
-            //Task::spawn(client(b"k4".to_vec())),
-            //Task::spawn(client(b"k5".to_vec())),
+            smol::spawn(client(b"k1".to_vec())),
+            //smol::spawn(client(b"k1".to_vec())),
+            //smol::spawn(client(b"k3".to_vec())),
+            //smol::spawn(client(b"k4".to_vec())),
+            //smol::spawn(client(b"k5".to_vec())),
         ];
 
         let mut errors = 0;

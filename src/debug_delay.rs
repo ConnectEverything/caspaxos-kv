@@ -11,7 +11,7 @@ pub async fn debug_delay() {
     };
 
     if delay {
-        smol::Timer::new(std::time::Duration::from_millis(2)).await;
+        smol::Timer::after(std::time::Duration::from_millis(2)).await;
     }
 
     DebugDelay.await

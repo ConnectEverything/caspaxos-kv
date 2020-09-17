@@ -14,18 +14,16 @@ fault_injection = []
 debug = true
 
 [dependencies]
-sled = "0.34.2"
-rand = "0.7.3"
-uuid = { version = "0.8.1", features = ["v4"] }
-smol = "0.3.3"
-async-channel = "1.4.0"
 color-backtrace = { version = "0.4.2", optional = true }
 crc32fast = "1.2.0"
-historian = "4.0.3"
-async-mutex = "1.1.5"
 futures-channel = "0.3.5"
+historian = "4.0.3"
 log = "0.4.11"
+rand = "0.7.3"
+sled = "0.34.2"
+smol = "1.0.1"
+uuid = { version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
-quickcheck = "0.9.2"
 env_logger = "0.7.1"
+quickcheck = "0.9.2"

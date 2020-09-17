@@ -138,7 +138,7 @@ pub fn start_udp_client<
 
     let (process_task, net) = Net::new_udp(listen_addr, timeout)?;
 
-    let processor = smol::Task::spawn(process_task);
+    let processor = smol::spawn(process_task);
 
     Ok(Client {
         known_servers,
@@ -172,7 +172,7 @@ pub fn start_udp_server<
 
     let (process_task, net) = Net::new_udp(listen_addr, timeout)?;
 
-    let processor = smol::Task::spawn(process_task);
+    let processor = smol::spawn(process_task);
 
     Ok(Server {
         net,

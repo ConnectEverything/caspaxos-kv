@@ -2,7 +2,7 @@ use caspaxos_kv::{simulate, Client};
 use smol::Task;
 
 fn set_client(mut client: Client) -> Task<()> {
-    Task::spawn(async move {
+    smol::spawn(async move {
         let responses = client.ping().await;
         println!("majority pinger got {} responses", responses);
 

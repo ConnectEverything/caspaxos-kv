@@ -11,10 +11,10 @@ use crate::{
     Request, Response,
 };
 
-use async_channel::Sender;
-use async_mutex::Mutex;
 use crc32fast::Hasher;
 use futures_channel::oneshot::{channel as oneshot, Sender as OneshotSender};
+use smol::channel::Sender;
+use smol::lock::Mutex;
 use smol::Async;
 use uuid::Uuid;
 
